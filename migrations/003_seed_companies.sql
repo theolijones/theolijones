@@ -345,9 +345,9 @@ INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
 
 -- Betfair
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'Betfair'), 'instagram', 'betfairaustralia', 'https://www.instagram.com/betfairaustralia/'),
-  ((SELECT id FROM companies WHERE name = 'Betfair'), 'facebook', 'BetfairAustralia', 'https://www.facebook.com/BetfairAustralia/'),
-  ((SELECT id FROM companies WHERE name = 'Betfair'), 'x', 'BetfairAus', 'https://x.com/BetfairAus');
+  ((SELECT id FROM companies WHERE name = 'Betfair'), 'instagram', 'betfair_aus', 'https://www.instagram.com/betfair_aus/'),
+  ((SELECT id FROM companies WHERE name = 'Betfair'), 'facebook', 'betfairaustralia', 'https://www.facebook.com/betfairaustralia/'),
+  ((SELECT id FROM companies WHERE name = 'Betfair'), 'x', 'Betfair_Aus', 'https://x.com/Betfair_Aus');
 
 -- Betstar
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
@@ -389,9 +389,8 @@ INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
 
 -- Surge
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'Surge'), 'instagram', 'surgebet', 'https://www.instagram.com/surgebet/'),
-  ((SELECT id FROM companies WHERE name = 'Surge'), 'facebook', 'surgebet', 'https://www.facebook.com/surgebet/'),
-  ((SELECT id FROM companies WHERE name = 'Surge'), 'x', 'surgebet', 'https://x.com/surgebet');
+  ((SELECT id FROM companies WHERE name = 'Surge'), 'instagram', 'surgeaus', 'https://www.instagram.com/surgeaus/'),
+  ((SELECT id FROM companies WHERE name = 'Surge'), 'x', 'SurgeAus', 'https://x.com/SurgeAus');
 
 -- Noisy
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
@@ -407,3 +406,26 @@ INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
   ((SELECT id FROM companies WHERE name = 'PulseBet'), 'instagram', 'pulsebet', 'https://www.instagram.com/pulsebet/'),
   ((SELECT id FROM companies WHERE name = 'PulseBet'), 'facebook', 'pulsebet', 'https://www.facebook.com/pulsebet/');
+
+-- betM
+INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
+  ((SELECT id FROM companies WHERE name = 'betM'), 'instagram', 'betm.australia', 'https://www.instagram.com/betm.australia/'),
+  ((SELECT id FROM companies WHERE name = 'betM'), 'facebook', 'betm.australia', 'https://www.facebook.com/betm.australia/'),
+  ((SELECT id FROM companies WHERE name = 'betM'), 'x', 'betmaustralia', 'https://x.com/betmaustralia');
+
+-- RobWaterhouse.com
+INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
+  ((SELECT id FROM companies WHERE name = 'RobWaterhouse.com'), 'instagram', 'robertwaterhouse', 'https://www.instagram.com/robertwaterhouse/'),
+  ((SELECT id FROM companies WHERE name = 'RobWaterhouse.com'), 'x', 'RobWaterhouse1', 'https://x.com/RobWaterhouse1');
+
+-- Bet Nation (add verified Facebook)
+UPDATE social_accounts SET account_url = 'https://www.facebook.com/bet.nation.777/'
+  WHERE company_id = (SELECT id FROM companies WHERE name = 'Bet Nation')
+    AND platform = 'facebook';
+-- If no FB row exists, insert it
+INSERT INTO social_accounts (company_id, platform, handle, account_url)
+  SELECT (SELECT id FROM companies WHERE name = 'Bet Nation'), 'facebook', 'bet.nation.777', 'https://www.facebook.com/bet.nation.777/'
+  WHERE NOT EXISTS (
+    SELECT 1 FROM social_accounts
+    WHERE company_id = (SELECT id FROM companies WHERE name = 'Bet Nation') AND platform = 'facebook'
+  );
