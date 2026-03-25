@@ -235,17 +235,15 @@ INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
 
 -- Ladbrokes
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'Ladbrokes'), 'instagram', 'ladbrokesau', 'https://www.instagram.com/ladbrokesau/'),
-  ((SELECT id FROM companies WHERE name = 'Ladbrokes'), 'facebook', 'LadbrokesAustralia', 'https://www.facebook.com/LadbrokesAustralia/'),
-  ((SELECT id FROM companies WHERE name = 'Ladbrokes'), 'x', 'ladbrokes_au', 'https://x.com/ladbrokes_au'),
-  ((SELECT id FROM companies WHERE name = 'Ladbrokes'), 'tiktok', 'ladbrokesau', 'https://www.tiktok.com/@ladbrokesau');
+  ((SELECT id FROM companies WHERE name = 'Ladbrokes'), 'instagram', 'ladbrokescomau', 'https://www.instagram.com/ladbrokescomau/'),
+  ((SELECT id FROM companies WHERE name = 'Ladbrokes'), 'facebook', 'ladbrokescomau', 'https://www.facebook.com/ladbrokescomau/'),
+  ((SELECT id FROM companies WHERE name = 'Ladbrokes'), 'x', 'ladbrokescomau', 'https://x.com/ladbrokescomau');
 
 -- Neds
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'Neds'), 'instagram', 'nedsaustralia', 'https://www.instagram.com/nedsaustralia/'),
-  ((SELECT id FROM companies WHERE name = 'Neds'), 'facebook', 'nedsaustralia', 'https://www.facebook.com/nedsaustralia/'),
-  ((SELECT id FROM companies WHERE name = 'Neds'), 'x', 'nedsaustralia', 'https://x.com/nedsaustralia'),
-  ((SELECT id FROM companies WHERE name = 'Neds'), 'tiktok', 'nedsaustralia', 'https://www.tiktok.com/@nedsaustralia');
+  ((SELECT id FROM companies WHERE name = 'Neds'), 'instagram', 'nedsaus', 'https://www.instagram.com/nedsaus/'),
+  ((SELECT id FROM companies WHERE name = 'Neds'), 'facebook', 'nedsAU', 'https://www.facebook.com/nedsAU/'),
+  ((SELECT id FROM companies WHERE name = 'Neds'), 'x', 'NedsAus', 'https://x.com/nedsaus');
 
 -- Bet365
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
@@ -255,42 +253,37 @@ INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
 
 -- TAB
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'TAB'), 'instagram', 'tab_com_au', 'https://www.instagram.com/tab_com_au/'),
-  ((SELECT id FROM companies WHERE name = 'TAB'), 'facebook', 'TABcomau', 'https://www.facebook.com/TABcomau/'),
-  ((SELECT id FROM companies WHERE name = 'TAB'), 'x', 'tab_com_au', 'https://x.com/tab_com_au'),
-  ((SELECT id FROM companies WHERE name = 'TAB'), 'tiktok', 'tab_com_au', 'https://www.tiktok.com/@tab_com_au');
+  ((SELECT id FROM companies WHERE name = 'TAB'), 'instagram', 'tabcomau', 'https://www.instagram.com/tabcomau/'),
+  ((SELECT id FROM companies WHERE name = 'TAB'), 'facebook', 'tab.com.au', 'https://www.facebook.com/tab.com.au/'),
+  ((SELECT id FROM companies WHERE name = 'TAB'), 'x', 'tabcomau', 'https://x.com/tabcomau');
 
 -- PointsBet
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'PointsBet'), 'instagram', 'pointsbet_au', 'https://www.instagram.com/pointsbet_au/'),
-  ((SELECT id FROM companies WHERE name = 'PointsBet'), 'facebook', 'PointsBetAU', 'https://www.facebook.com/PointsBetAU/'),
+  ((SELECT id FROM companies WHERE name = 'PointsBet'), 'instagram', 'pointsbet', 'https://www.instagram.com/pointsbet/'),
   ((SELECT id FROM companies WHERE name = 'PointsBet'), 'x', 'PointsBet_AU', 'https://x.com/PointsBet_AU');
 
 -- Unibet
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'Unibet'), 'instagram', 'unibet_au', 'https://www.instagram.com/unibet_au/'),
+  ((SELECT id FROM companies WHERE name = 'Unibet'), 'instagram', 'unibetaustralia', 'https://www.instagram.com/unibetaustralia/'),
   ((SELECT id FROM companies WHERE name = 'Unibet'), 'facebook', 'UnibetAustralia', 'https://www.facebook.com/UnibetAustralia/'),
-  ((SELECT id FROM companies WHERE name = 'Unibet'), 'x', 'unibet_au', 'https://x.com/unibet_au');
+  ((SELECT id FROM companies WHERE name = 'Unibet'), 'x', 'UNIBETAustralia', 'https://x.com/UNIBETAustralia');
 
 -- BlueBet
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'BlueBet'), 'instagram', 'bluebet', 'https://www.instagram.com/bluebet/'),
-  ((SELECT id FROM companies WHERE name = 'BlueBet'), 'facebook', 'BlueBetAustralia', 'https://www.facebook.com/BlueBetAustralia/'),
-  ((SELECT id FROM companies WHERE name = 'BlueBet'), 'x', 'BlueBetAus', 'https://x.com/BlueBetAus');
+  ((SELECT id FROM companies WHERE name = 'BlueBet'), 'instagram', 'bluebetcomau', 'https://www.instagram.com/bluebetcomau/'),
+  ((SELECT id FROM companies WHERE name = 'BlueBet'), 'x', 'BlueBetAu', 'https://x.com/BlueBetAu');
 
 -- Betr
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'Betr'), 'instagram', 'betr', 'https://www.instagram.com/betr/'),
-  ((SELECT id FROM companies WHERE name = 'Betr'), 'facebook', 'betrau', 'https://www.facebook.com/betrau/'),
-  ((SELECT id FROM companies WHERE name = 'Betr'), 'x', 'betr_au', 'https://x.com/betr_au'),
-  ((SELECT id FROM companies WHERE name = 'Betr'), 'tiktok', 'betr', 'https://www.tiktok.com/@betr');
+  ((SELECT id FROM companies WHERE name = 'Betr'), 'instagram', 'betr.com.au', 'https://www.instagram.com/betr.com.au/'),
+  ((SELECT id FROM companies WHERE name = 'Betr'), 'x', 'betr_au', 'https://x.com/betr_au');
 
 -- Dabble
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
-  ((SELECT id FROM companies WHERE name = 'Dabble'), 'instagram', 'dabble.com.au', 'https://www.instagram.com/dabble.com.au/'),
-  ((SELECT id FROM companies WHERE name = 'Dabble'), 'facebook', 'dabblecomau', 'https://www.facebook.com/dabblecomau/'),
+  ((SELECT id FROM companies WHERE name = 'Dabble'), 'instagram', 'dabblecomau', 'https://www.instagram.com/dabblecomau/'),
+  ((SELECT id FROM companies WHERE name = 'Dabble'), 'facebook', 'dabblesports', 'https://www.facebook.com/dabblesports/'),
   ((SELECT id FROM companies WHERE name = 'Dabble'), 'x', 'dabblecomau', 'https://x.com/dabblecomau'),
-  ((SELECT id FROM companies WHERE name = 'Dabble'), 'tiktok', 'dabble.com.au', 'https://www.tiktok.com/@dabble.com.au');
+  ((SELECT id FROM companies WHERE name = 'Dabble'), 'tiktok', 'dabblecomau', 'https://www.tiktok.com/@dabblecomau');
 
 -- Palmerbet
 INSERT INTO social_accounts (company_id, platform, handle, account_url) VALUES
