@@ -5,15 +5,18 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, ScanCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { transcribeJsonToWebVTT, type TranscribeResult } from '../utils/webvtt';
 
 const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
+const lambda = new LambdaClient({});
 
 const VIDEOS_TABLE = process.env.VIDEOS_TABLE || 'Velox-Videos';
 const CAPTIONS_BUCKET = process.env.S3_BUCKET_CAPTIONS || '';
 const TRANSCRIPTS_BUCKET = process.env.S3_BUCKET_TRANSCRIPTS || '';
 const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN || '';
+const QA_FLAGGING_FUNCTION = process.env.QA_FLAGGING_FUNCTION || '';
 
 interface TranscribeEvent {
   detail: {
@@ -97,6 +100,21 @@ export async function handler(event: TranscribeEvent): Promise<void> {
     }));
 
     console.log(`[TranscribeComplete] Video ${videoId} transcription complete, language: ${detectedLanguage}`);
+
+    // Chain to QA flagging Lambda
+    if (QA_FLAGGING_FUNCTION) {
+      try {
+        await lambda.send(new InvokeCommand({
+          FunctionName: QA_FLAGGING_FUNCTION,
+          InvocationType: 'Event', // async
+          Payload: Buffer.from(JSON.stringify({ videoId })),
+        }));
+        console.log(`[TranscribeComplete] Triggered QA flagging for ${videoId}`);
+      } catch (qaErr) {
+        console.error(`[TranscribeComplete] Failed to trigger QA flagging:`, qaErr);
+        // Non-fatal — don't fail the whole pipeline
+      }
+    }
   } catch (err) {
     console.error(`[TranscribeComplete] Error processing transcript for ${videoId}:`, err);
 
