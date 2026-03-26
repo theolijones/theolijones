@@ -1,0 +1,28 @@
+{
+  "name": "velox",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:api": "npm run dev --workspace=packages/api",
+    "build:web": "npm run build --workspace=apps/web",
+    "build:api": "npm run build --workspace=packages/api",
+    "build:shared": "npm run build --workspace=packages/shared",
+    "build:aws-clients": "npm run build --workspace=packages/aws-clients",
+    "build:infra": "npm run build --workspace=packages/infrastructure",
+    "deploy:infra": "npm run deploy --workspace=packages/infrastructure",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc --build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

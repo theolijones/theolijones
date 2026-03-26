@@ -1,0 +1,30 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-velox-border;
+  }
+
+  body {
+    @apply bg-velox-bg text-velox-text-primary;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-velox-bg;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-velox-border-light rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-velox-text-muted;
+  }
+}
