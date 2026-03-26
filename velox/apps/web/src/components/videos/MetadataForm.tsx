@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Save, Loader2 } from 'lucide-react';
-import type { Video, UpdateVideoInput } from '@velox/shared';
+import { useSchema } from '@/hooks/use-schema';
+import type { Video, UpdateVideoInput, CustomFieldDefinition } from '@velox/shared';
 
 interface MetadataFormProps {
   video: Video;
@@ -8,17 +9,125 @@ interface MetadataFormProps {
   isSaving: boolean;
 }
 
+function CustomFieldInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: CustomFieldDefinition;
+  value: unknown;
+  onChange: (val: unknown) => void;
+}) {
+  switch (field.type) {
+    case 'text':
+    case 'url':
+      return (
+        <input
+          type={field.type === 'url' ? 'url' : 'text'}
+          value={(value as string) || ''}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full bg-velox-bg border border-velox-border rounded-lg px-3 py-2 text-sm text-velox-text-primary focus:outline-none focus:border-velox-accent"
+          placeholder={field.type === 'url' ? 'https://...' : ''}
+        />
+      );
+    case 'number':
+      return (
+        <input
+          type="number"
+          value={(value as number) ?? ''}
+          onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)}
+          className="w-full bg-velox-bg border border-velox-border rounded-lg px-3 py-2 text-sm text-velox-text-primary focus:outline-none focus:border-velox-accent"
+        />
+      );
+    case 'date':
+      return (
+        <input
+          type="date"
+          value={(value as string) || ''}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full bg-velox-bg border border-velox-border rounded-lg px-3 py-2 text-sm text-velox-text-primary focus:outline-none focus:border-velox-accent"
+        />
+      );
+    case 'boolean':
+      return (
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={!!value}
+            onChange={(e) => onChange(e.target.checked)}
+            className="rounded border-velox-border"
+          />
+          <span className="text-sm text-velox-text-secondary">
+            {value ? 'Yes' : 'No'}
+          </span>
+        </label>
+      );
+    case 'select':
+      return (
+        <select
+          value={(value as string) || ''}
+          onChange={(e) => onChange(e.target.value || undefined)}
+          className="w-full bg-velox-bg border border-velox-border rounded-lg px-3 py-2 text-sm text-velox-text-primary focus:outline-none focus:border-velox-accent"
+        >
+          <option value="">Select...</option>
+          {field.options?.map((opt) => (
+            <option key={opt} value={opt}>{opt}</option>
+          ))}
+        </select>
+      );
+    case 'multi-select': {
+      const selected = (value as string[]) || [];
+      return (
+        <div className="flex flex-wrap gap-1.5">
+          {field.options?.map((opt) => {
+            const isSelected = selected.includes(opt);
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => {
+                  onChange(
+                    isSelected
+                      ? selected.filter((s) => s !== opt)
+                      : [...selected, opt]
+                  );
+                }}
+                className={`px-2 py-0.5 text-[11px] font-mono rounded-full border transition-colors ${
+                  isSelected
+                    ? 'bg-velox-accent-muted text-velox-accent border-velox-accent/30'
+                    : 'bg-velox-bg text-velox-text-muted border-velox-border hover:border-velox-border-light'
+                }`}
+              >
+                {opt}
+              </button>
+            );
+          })}
+        </div>
+      );
+    }
+    default:
+      return null;
+  }
+}
+
 export function MetadataForm({ video, onSave, isSaving }: MetadataFormProps) {
+  const { data: schemaData } = useSchema();
   const [title, setTitle] = useState(video.title);
   const [description, setDescription] = useState(video.description);
   const [category, setCategory] = useState(video.category);
   const [tagsInput, setTagsInput] = useState(video.tags.join(', '));
+  const [customMetadata, setCustomMetadata] = useState<Record<string, unknown>>(
+    video.customMetadata || {}
+  );
+
+  const customFields = schemaData?.data?.fields || [];
 
   useEffect(() => {
     setTitle(video.title);
     setDescription(video.description);
     setCategory(video.category);
     setTagsInput(video.tags.join(', '));
+    setCustomMetadata(video.customMetadata || {});
   }, [video]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -27,10 +136,8 @@ export function MetadataForm({ video, onSave, isSaving }: MetadataFormProps) {
       title,
       description,
       category,
-      tags: tagsInput
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean),
+      tags: tagsInput.split(',').map((t) => t.trim()).filter(Boolean),
+      customMetadata,
     });
   };
 
@@ -38,7 +145,8 @@ export function MetadataForm({ video, onSave, isSaving }: MetadataFormProps) {
     title !== video.title ||
     description !== video.description ||
     category !== video.category ||
-    tagsInput !== video.tags.join(', ');
+    tagsInput !== video.tags.join(', ') ||
+    JSON.stringify(customMetadata) !== JSON.stringify(video.customMetadata || {});
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -61,7 +169,7 @@ export function MetadataForm({ video, onSave, isSaving }: MetadataFormProps) {
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          rows={4}
+          rows={3}
           className="w-full bg-velox-bg border border-velox-border rounded-lg px-3 py-2 text-sm text-velox-text-primary focus:outline-none focus:border-velox-accent resize-none"
         />
       </div>
@@ -92,23 +200,46 @@ export function MetadataForm({ video, onSave, isSaving }: MetadataFormProps) {
         />
         {tagsInput && (
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {tagsInput
-              .split(',')
-              .map((t) => t.trim())
-              .filter(Boolean)
-              .map((tag, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center px-2 py-0.5 bg-velox-accent-muted text-velox-accent text-[11px] font-mono rounded-full"
-                >
-                  {tag}
-                </span>
-              ))}
+            {tagsInput.split(',').map((t) => t.trim()).filter(Boolean).map((tag, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center px-2 py-0.5 bg-velox-accent-muted text-velox-accent text-[11px] font-mono rounded-full"
+              >
+                {tag}
+              </span>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Read-only metadata */}
+      {/* Custom metadata fields from schema */}
+      {customFields.length > 0 && (
+        <div className="pt-4 border-t border-velox-border space-y-4">
+          <h4 className="text-xs font-mono text-velox-text-muted uppercase tracking-wider">
+            Custom Fields
+          </h4>
+          {customFields.map((field) => (
+            <div key={field.key}>
+              <label className="block text-xs font-mono text-velox-text-muted mb-1.5 uppercase tracking-wider">
+                {field.label}
+                {field.required && <span className="text-velox-red ml-1">*</span>}
+                {field.sendToGA && (
+                  <span className="text-velox-accent ml-1 normal-case" title="Sent to GA">GA</span>
+                )}
+              </label>
+              <CustomFieldInput
+                field={field}
+                value={customMetadata[field.key]}
+                onChange={(val) =>
+                  setCustomMetadata((prev) => ({ ...prev, [field.key]: val }))
+                }
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Read-only file info */}
       <div className="pt-4 border-t border-velox-border space-y-3">
         <h4 className="text-xs font-mono text-velox-text-muted uppercase tracking-wider">
           File Info
