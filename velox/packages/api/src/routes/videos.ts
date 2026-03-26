@@ -65,17 +65,30 @@ router.post('/:id/publish', asyncHandler(async (req, res) => {
   res.json({ success: true, data: video });
 }));
 
-// Transcript and caption endpoints (stubs for Phase 3)
+// GET /api/v1/videos/:id/transcript
 router.get('/:id/transcript', asyncHandler(async (req, res) => {
-  res.json({ success: true, data: { videoId: req.params.id, segments: [] } });
+  const transcriptService = await import('../services/transcript-service');
+  const result = await transcriptService.getTranscript(req.params.id);
+  res.json({ success: true, data: { videoId: req.params.id, ...result } });
 }));
 
+// PATCH /api/v1/videos/:id/transcript — update segments, regenerate WebVTT
 router.patch('/:id/transcript', asyncHandler(async (req, res) => {
-  res.json({ success: true, data: { videoId: req.params.id } });
+  const transcriptService = await import('../services/transcript-service');
+  const { segments } = req.body;
+  if (!segments || !Array.isArray(segments)) {
+    res.status(400).json({ success: false, error: 'segments array is required' });
+    return;
+  }
+  const result = await transcriptService.updateTranscript(req.params.id, segments);
+  res.json({ success: true, data: { videoId: req.params.id, ...result } });
 }));
 
+// GET /api/v1/videos/:id/captions — proxy WebVTT file
 router.get('/:id/captions', asyncHandler(async (req, res) => {
-  res.type('text/vtt').send('WEBVTT\n\n');
+  const transcriptService = await import('../services/transcript-service');
+  const vtt = await transcriptService.getCaptionsVTT(req.params.id);
+  res.type('text/vtt').send(vtt);
 }));
 
 export default router;

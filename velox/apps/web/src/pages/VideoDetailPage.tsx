@@ -1,11 +1,12 @@
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Trash2, Send, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Trash2, Send, ExternalLink, Captions } from 'lucide-react';
 import { useVideo, useUpdateVideo, useDeleteVideo, usePublishVideo } from '@/hooks/use-videos';
 import { BitmovinPlayer, FallbackPlayer } from '@/components/player/BitmovinPlayer';
 import { MetadataForm } from '@/components/videos/MetadataForm';
+import { TranscriptEditor } from '@/components/videos/TranscriptEditor';
 import { StatusChip } from '@/components/ui/StatusChip';
 import type { UpdateVideoInput } from '@velox/shared';
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 export function VideoDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -15,8 +16,18 @@ export function VideoDetailPage() {
   const deleteVideo = useDeleteVideo();
   const publishVideo = usePublishVideo();
   const [activeTab, setActiveTab] = useState<'metadata' | 'transcript'>('metadata');
+  const [currentTime, setCurrentTime] = useState(0);
+  const playerSeekRef = useRef<((time: number) => void) | null>(null);
 
   const video = data?.data;
+
+  const handleTimeUpdate = useCallback((time: number) => {
+    setCurrentTime(time);
+  }, []);
+
+  const handleSeek = useCallback((time: number) => {
+    playerSeekRef.current?.(time);
+  }, []);
 
   if (isLoading) {
     return (
@@ -53,6 +64,7 @@ export function VideoDetailPage() {
   };
 
   const PlayerComponent = video.playbackUrl ? BitmovinPlayer : FallbackPlayer;
+  const hasTranscript = video.status === 'transcribed' || video.status === 'published' || !!video.captionUrl;
 
   return (
     <div>
@@ -68,6 +80,12 @@ export function VideoDetailPage() {
           <h1 className="text-xl font-semibold truncate">{video.title}</h1>
           <div className="flex items-center gap-3 mt-1">
             <StatusChip status={video.status} />
+            {video.captionUrl && (
+              <span className="flex items-center gap-1 text-[11px] text-velox-accent font-mono">
+                <Captions className="w-3.5 h-3.5" />
+                CC
+              </span>
+            )}
             <span className="text-xs text-velox-text-muted font-mono">{video.id}</span>
           </div>
         </div>
@@ -101,22 +119,26 @@ export function VideoDetailPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Player */}
+        {/* Player + Tabs */}
         <div className="lg:col-span-2">
           {video.playbackUrl ? (
             <PlayerComponent
               sourceUrl={video.playbackUrl}
               captionsUrl={video.captionUrl}
               poster={video.thumbnailUrl}
+              onTimeUpdate={handleTimeUpdate}
+              onSeekRef={playerSeekRef}
             />
           ) : (
             <div className="aspect-video bg-velox-surface rounded-xl border border-velox-border flex items-center justify-center">
               <div className="text-center">
-                {video.status === 'uploading' || video.status === 'processing' ? (
+                {video.status === 'uploading' || video.status === 'processing' || video.status === 'transcribing' ? (
                   <>
                     <div className="animate-spin w-8 h-8 border-2 border-velox-accent border-t-transparent rounded-full mx-auto mb-3" />
                     <p className="text-sm text-velox-text-secondary">
-                      {video.status === 'uploading' ? 'Upload in progress...' : 'Transcoding in progress...'}
+                      {video.status === 'uploading' && 'Upload in progress...'}
+                      {video.status === 'processing' && 'Transcoding in progress...'}
+                      {video.status === 'transcribing' && 'Generating transcript...'}
                     </p>
                   </>
                 ) : (
@@ -126,7 +148,7 @@ export function VideoDetailPage() {
             </div>
           )}
 
-          {/* Tabs below player */}
+          {/* Tabs */}
           <div className="mt-4">
             <div className="flex items-center gap-4 border-b border-velox-border">
               {(['metadata', 'transcript'] as const).map((tab) => (
@@ -140,30 +162,52 @@ export function VideoDetailPage() {
                   }`}
                 >
                   {tab === 'metadata' ? 'Metadata' : 'Transcript'}
+                  {tab === 'transcript' && hasTranscript && (
+                    <span className="ml-1.5 w-1.5 h-1.5 bg-velox-green rounded-full inline-block" />
+                  )}
                 </button>
               ))}
             </div>
 
-            <div className="mt-4 lg:hidden">
-              {activeTab === 'metadata' && (
-                <MetadataForm
-                  video={video}
-                  onSave={handleSave}
-                  isSaving={updateVideo.isPending}
-                />
-              )}
-              {activeTab === 'transcript' && (
-                <div className="bg-velox-surface rounded-xl border border-velox-border p-6 text-center">
-                  <p className="text-sm text-velox-text-secondary">
-                    Transcript viewer — coming in Phase 3
-                  </p>
-                </div>
-              )}
+            <div className="mt-4">
+              {/* Mobile: show active tab content here */}
+              <div className="lg:hidden">
+                {activeTab === 'metadata' && (
+                  <MetadataForm
+                    video={video}
+                    onSave={handleSave}
+                    isSaving={updateVideo.isPending}
+                  />
+                )}
+                {activeTab === 'transcript' && (
+                  <TranscriptEditor
+                    videoId={video.id}
+                    currentTime={currentTime}
+                    onSeek={handleSeek}
+                  />
+                )}
+              </div>
+
+              {/* Desktop: always show transcript below player */}
+              <div className="hidden lg:block">
+                {activeTab === 'transcript' && (
+                  <TranscriptEditor
+                    videoId={video.id}
+                    currentTime={currentTime}
+                    onSeek={handleSeek}
+                  />
+                )}
+                {activeTab === 'metadata' && (
+                  <div className="text-center py-6 text-xs text-velox-text-muted">
+                    Metadata editor is in the sidebar
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Sidebar — metadata form (desktop) */}
+        {/* Sidebar — metadata (desktop) */}
         <div className="hidden lg:block">
           <div className="bg-velox-surface rounded-xl border border-velox-border p-4">
             <h3 className="text-xs font-mono text-velox-text-muted uppercase tracking-wider mb-4">

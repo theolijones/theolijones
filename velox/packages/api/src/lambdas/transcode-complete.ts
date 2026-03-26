@@ -1,10 +1,13 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, UpdateCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 
 const dynamoDb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const lambdaClient = new LambdaClient({});
 
 const VIDEOS_TABLE = process.env.VIDEOS_TABLE || 'Velox-Videos';
 const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN || '';
+const TRANSCRIBE_TRIGGER_FN = process.env.TRANSCRIBE_TRIGGER_FN || 'velox-transcribe-trigger';
 
 interface MediaConvertEvent {
   detail: {
@@ -134,4 +137,26 @@ export async function handler(event: MediaConvertEvent): Promise<void> {
   }));
 
   console.log(`[TranscodeComplete] Updated video ${videoId} with playback URL`);
+
+  // Chain into transcription pipeline
+  const sourceBucket = event.detail.userMetadata?.sourceS3Key
+    ? `s3://${process.env.S3_BUCKET_VIDEO_SOURCE || ''}/${event.detail.userMetadata.sourceS3Key}`
+    : '';
+
+  if (sourceBucket) {
+    try {
+      await lambdaClient.send(new InvokeCommand({
+        FunctionName: TRANSCRIBE_TRIGGER_FN,
+        InvocationType: 'Event', // async
+        Payload: Buffer.from(JSON.stringify({
+          videoId,
+          sourceS3Uri: sourceBucket,
+        })),
+      }));
+      console.log(`[TranscodeComplete] Triggered transcription for video ${videoId}`);
+    } catch (err) {
+      console.error(`[TranscodeComplete] Failed to trigger transcription:`, err);
+      // Non-fatal — video is still usable without transcription
+    }
+  }
 }

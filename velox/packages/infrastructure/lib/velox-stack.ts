@@ -382,6 +382,51 @@ export class VeloxStack extends cdk.Stack {
       targets: [new targets.LambdaFunction(transcodeCompleteFn)],
     });
 
+    // ─── Transcription Lambda Functions ─────────────────────────
+
+    const transcribeTriggerFn = new lambda.Function(this, 'TranscribeTriggerFn', {
+      functionName: 'velox-transcribe-trigger',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'transcribe-trigger.handler',
+      code: lambda.Code.fromAsset('lambda/transcribe-trigger'),
+      role: lambdaProcessingRole,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        VIDEOS_TABLE: videosTable.tableName,
+        S3_BUCKET_TRANSCRIPTS: this.transcriptsBucket.bucketName,
+      },
+    });
+
+    const transcribeCompleteFn = new lambda.Function(this, 'TranscribeCompleteFn', {
+      functionName: 'velox-transcribe-complete',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'transcribe-complete.handler',
+      code: lambda.Code.fromAsset('lambda/transcribe-complete'),
+      role: lambdaProcessingRole,
+      timeout: cdk.Duration.minutes(2),
+      memorySize: 512,
+      environment: {
+        VIDEOS_TABLE: videosTable.tableName,
+        S3_BUCKET_CAPTIONS: this.captionsBucket.bucketName,
+        S3_BUCKET_TRANSCRIPTS: this.transcriptsBucket.bucketName,
+        CLOUDFRONT_DOMAIN: this.distribution.distributionDomainName,
+      },
+    });
+
+    // EventBridge rule for Transcribe job completion
+    new events.Rule(this, 'TranscribeCompleteRule', {
+      ruleName: 'velox-transcribe-complete',
+      eventPattern: {
+        source: ['aws.transcribe'],
+        detailType: ['Transcribe Job State Change'],
+        detail: {
+          TranscriptionJobStatus: ['COMPLETED', 'FAILED'],
+        },
+      },
+      targets: [new targets.LambdaFunction(transcribeCompleteFn)],
+    });
+
     // ─── Outputs ─────────────────────────────────────────────────
 
     new cdk.CfnOutput(this, 'UserPoolId', {
