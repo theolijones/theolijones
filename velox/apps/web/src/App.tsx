@@ -13,6 +13,7 @@ import { QAPage } from '@/pages/QAPage';
 import { ModulesPage } from '@/pages/ModulesPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { MetadataPage } from '@/pages/MetadataPage';
 import { VideoDetailPage } from '@/pages/VideoDetailPage';
 import { type ReactNode, useEffect } from 'react';
 
@@ -84,6 +85,7 @@ export default function App() {
               <Route path="livestreams" element={<LivestreamsPage />} />
               <Route path="placements" element={<PlacementsPage />} />
               <Route path="scheduling" element={<SchedulingPage />} />
+              <Route path="metadata" element={<MetadataPage />} />
               <Route path="qa" element={<QAPage />} />
               <Route path="modules" element={<ModulesPage />} />
               <Route path="dashboard" element={<DashboardPage />} />

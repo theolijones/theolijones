@@ -11,6 +11,7 @@ import livestreamsRouter from './routes/livestreams';
 import analyticsRouter from './routes/analytics';
 import modulesRouter from './routes/modules';
 import qaRouter from './routes/qa';
+import templatesRouter from './routes/templates';
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/v1/livestreams', livestreamsRouter);
 app.use('/api/v1/analytics', analyticsRouter);
 app.use('/api/v1/modules', modulesRouter);
 app.use('/api/v1/qa', qaRouter);
+app.use('/api/v1/templates', templatesRouter);
 
 // Error handling
 app.use(errorHandler);

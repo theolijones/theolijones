@@ -11,6 +11,7 @@ import {
   Settings,
   Blocks,
   LogOut,
+  Tags,
 } from 'lucide-react';
 import { useAuthStore } from '@/stores/auth-store';
 import { getLogoutUrl } from '@/lib/auth';
@@ -21,6 +22,7 @@ const navItems = [
   { to: '/livestreams', icon: Radio, label: 'Live' },
   { to: '/placements', icon: LayoutGrid, label: 'Placements' },
   { to: '/scheduling', icon: Calendar, label: 'Scheduling' },
+  { to: '/metadata', icon: Tags, label: 'Metadata' },
   { to: '/qa', icon: ShieldCheck, label: 'QA' },
   { to: '/modules', icon: Blocks, label: 'Modules' },
   { to: '/dashboard', icon: BarChart3, label: 'Dashboard' },
