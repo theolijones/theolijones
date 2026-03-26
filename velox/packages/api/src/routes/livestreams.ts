@@ -1,43 +1,57 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { authenticate } from '../middleware/auth';
+import * as livestreamService from '../services/livestream-service';
 
 const router = Router();
-
 router.use(authenticate);
 
-// GET /api/v1/livestreams
-router.get('/', async (_req: Request, res: Response) => {
-  res.json({ success: true, data: [], total: 0, page: 1, limit: 25 });
-});
+function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<void>) {
+  return (req: Request, res: Response, next: NextFunction) => { fn(req, res, next).catch(next); };
+}
 
-// POST /api/v1/livestreams — provision MediaLive channel + stream key
-router.post('/', async (_req: Request, res: Response) => {
-  res.status(201).json({ success: true, data: {} });
-});
+router.get('/', asyncHandler(async (_req, res) => {
+  const streams = await livestreamService.listLivestreams();
+  res.json({ success: true, data: streams, total: streams.length, page: 1, limit: streams.length });
+}));
 
-// PATCH /api/v1/livestreams/:id
-router.patch('/:id', async (req: Request, res: Response) => {
+router.post('/', asyncHandler(async (req, res) => {
+  const stream = await livestreamService.createLivestream(req.body, req.user!.id);
+  res.status(201).json({ success: true, data: stream });
+}));
+
+router.get('/:id', asyncHandler(async (req, res) => {
+  const stream = await livestreamService.getLivestream(req.params.id);
+  res.json({ success: true, data: stream });
+}));
+
+router.patch('/:id', asyncHandler(async (req, res) => {
+  const stream = await livestreamService.updateLivestream(req.params.id, req.body);
+  res.json({ success: true, data: stream });
+}));
+
+router.delete('/:id', asyncHandler(async (req, res) => {
+  await livestreamService.deleteLivestream(req.params.id);
   res.json({ success: true, data: { id: req.params.id } });
-});
+}));
 
-// DELETE /api/v1/livestreams/:id
-router.delete('/:id', async (req: Request, res: Response) => {
-  res.json({ success: true, data: { id: req.params.id } });
-});
+router.post('/:id/start', asyncHandler(async (req, res) => {
+  const stream = await livestreamService.startLivestream(req.params.id);
+  res.json({ success: true, data: stream });
+}));
 
-// POST /api/v1/livestreams/:id/start
-router.post('/:id/start', async (req: Request, res: Response) => {
-  res.json({ success: true, data: { id: req.params.id, status: 'starting' } });
-});
+router.post('/:id/stop', asyncHandler(async (req, res) => {
+  const stream = await livestreamService.stopLivestream(req.params.id);
+  res.json({ success: true, data: stream });
+}));
 
-// POST /api/v1/livestreams/:id/stop
-router.post('/:id/stop', async (req: Request, res: Response) => {
-  res.json({ success: true, data: { id: req.params.id, status: 'stopping' } });
-});
+router.get('/:id/status', asyncHandler(async (req, res) => {
+  const status = await livestreamService.getStreamStatus(req.params.id);
+  res.json({ success: true, data: status });
+}));
 
-// GET /api/v1/livestreams/:id/outputs — get MediaPackage endpoints
-router.get('/:id/outputs', async (req: Request, res: Response) => {
-  res.json({ success: true, data: { id: req.params.id, outputs: [] } });
-});
+router.get('/:id/outputs', asyncHandler(async (req, res) => {
+  const outputs = await livestreamService.getOutputs(req.params.id);
+  res.json({ success: true, data: { id: req.params.id, outputs } });
+}));
 
 export default router;
