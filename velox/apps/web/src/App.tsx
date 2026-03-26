@@ -13,6 +13,7 @@ import { QAPage } from '@/pages/QAPage';
 import { ModulesPage } from '@/pages/ModulesPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { SettingsPage } from '@/pages/SettingsPage';
+import { VideoDetailPage } from '@/pages/VideoDetailPage';
 import { type ReactNode, useEffect } from 'react';
 
 const queryClient = new QueryClient({
@@ -78,6 +79,7 @@ export default function App() {
               }
             >
               <Route index element={<LibraryPage />} />
+              <Route path="videos/:id" element={<VideoDetailPage />} />
               <Route path="folders" element={<FoldersPage />} />
               <Route path="livestreams" element={<LivestreamsPage />} />
               <Route path="placements" element={<PlacementsPage />} />

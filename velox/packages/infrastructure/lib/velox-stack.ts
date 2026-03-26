@@ -8,6 +8,9 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as targets from 'aws-cdk-lib/aws-events-targets';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import { Construct } from 'constructs';
 
 export class VeloxStack extends cdk.Stack {
@@ -324,6 +327,59 @@ export class VeloxStack extends cdk.Stack {
       queueName: 'velox-transcribe-queue',
       visibilityTimeout: cdk.Duration.minutes(30),
       retentionPeriod: cdk.Duration.days(7),
+    });
+
+    // ─── Lambda Functions ─────────────────────────────────────────
+
+    const transcodeTriggerFn = new lambda.Function(this, 'TranscodeTriggerFn', {
+      functionName: 'velox-transcode-trigger',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'transcode-trigger.handler',
+      code: lambda.Code.fromAsset('lambda/transcode-trigger'),
+      role: lambdaProcessingRole,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        VIDEOS_TABLE: videosTable.tableName,
+        MEDIACONVERT_ENDPOINT: '', // Set after deploy
+        MEDIACONVERT_ROLE_ARN: mediaConvertRole.roleArn,
+        S3_BUCKET_VIDEO_OUTPUT: this.videoOutputBucket.bucketName,
+        S3_BUCKET_THUMBNAILS: this.thumbnailsBucket.bucketName,
+      },
+    });
+
+    // Trigger on S3 upload to source bucket
+    this.videoSourceBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(transcodeTriggerFn),
+      { prefix: 'uploads/' }
+    );
+
+    const transcodeCompleteFn = new lambda.Function(this, 'TranscodeCompleteFn', {
+      functionName: 'velox-transcode-complete',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: 'transcode-complete.handler',
+      code: lambda.Code.fromAsset('lambda/transcode-complete'),
+      role: lambdaProcessingRole,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        VIDEOS_TABLE: videosTable.tableName,
+        CLOUDFRONT_DOMAIN: this.distribution.distributionDomainName,
+      },
+    });
+
+    // EventBridge rule for MediaConvert job completion
+    new events.Rule(this, 'MediaConvertCompleteRule', {
+      ruleName: 'velox-mediaconvert-complete',
+      eventPattern: {
+        source: ['aws.mediaconvert'],
+        detailType: ['MediaConvert Job State Change'],
+        detail: {
+          status: ['COMPLETE', 'ERROR'],
+        },
+      },
+      targets: [new targets.LambdaFunction(transcodeCompleteFn)],
     });
 
     // ─── Outputs ─────────────────────────────────────────────────
