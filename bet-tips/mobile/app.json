@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Bet Tips",
+    "slug": "bet-tips",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "au.com.bettips.mobile"
+    },
+    "android": {
+      "package": "au.com.bettips.mobile"
+    },
+    "extra": {
+      "apiUrl": "https://example.execute-api.ap-southeast-2.amazonaws.com"
+    }
+  }
+}

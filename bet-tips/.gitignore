@@ -1,0 +1,20 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+.DS_Store
+
+# CDK
+backend/cdk.out/
+backend/cdk.context.json
+
+# Expo
+mobile/.expo/
+mobile/web-build/
+mobile/ios/
+mobile/android/
+
+# Vite
+admin/dist/

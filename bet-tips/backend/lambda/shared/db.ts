@@ -1,0 +1,73 @@
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
+
+const raw = new DynamoDBClient({});
+export const ddb = DynamoDBDocumentClient.from(raw, {
+  marshallOptions: { removeUndefinedValues: true },
+});
+
+export const tables = {
+  users: process.env.USERS_TABLE!,
+  tokens: process.env.TOKENS_TABLE!,
+  uploads: process.env.UPLOADS_TABLE!,
+  schema: process.env.SCHEMA_TABLE!,
+};
+
+export const buckets = {
+  media: process.env.MEDIA_BUCKET!,
+};
+
+export type UserRole = "admin" | "user";
+
+export interface UserRecord {
+  userId: string;
+  role: UserRole;
+  sportsbetUsername?: string;
+  email?: string;
+  passwordHash?: string;
+  signupTokenUsed?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TokenRecord {
+  token: string;
+  status: "active" | "used" | "revoked";
+  note?: string;
+  issuedBy: string;
+  usedBy?: string;
+  usedAt?: string;
+  createdAt: string;
+  expiresAt?: string;
+}
+
+export type UploadStatus = "pending" | "approved" | "rejected";
+
+export interface UploadRecord {
+  uploadId: string;
+  userId: string;
+  status: UploadStatus;
+  videoKey: string;
+  metadataKey: string;
+  reviewNote?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MetadataSchemaField {
+  key: string;
+  label: string;
+  type: "string" | "number" | "boolean" | "enum";
+  required: boolean;
+  options?: string[];
+  helpText?: string;
+}
+
+export interface MetadataSchemaRecord {
+  schemaId: "current";
+  fields: MetadataSchemaField[];
+  updatedAt: string;
+  updatedBy: string;
+}

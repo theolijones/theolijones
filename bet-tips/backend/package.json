@@ -1,0 +1,38 @@
+{
+  "name": "bet-tips-backend",
+  "version": "0.1.0",
+  "private": true,
+  "bin": {
+    "bet-tips-backend": "bin/app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "deploy": "cdk deploy",
+    "diff": "cdk diff",
+    "synth": "cdk synth",
+    "destroy": "cdk destroy"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.7",
+    "@types/node": "^20.14.10",
+    "aws-cdk": "^2.170.0",
+    "esbuild": "^0.24.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.691.0",
+    "@aws-sdk/client-s3": "^3.691.0",
+    "@aws-sdk/client-secrets-manager": "^3.691.0",
+    "@aws-sdk/lib-dynamodb": "^3.691.0",
+    "@aws-sdk/s3-request-presigner": "^3.691.0",
+    "aws-cdk-lib": "^2.170.0",
+    "bcryptjs": "^2.4.3",
+    "constructs": "^10.4.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
