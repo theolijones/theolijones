@@ -3,8 +3,11 @@ import { useAuth } from "../auth/AuthContext";
 import SignUpScreen from "../screens/SignUpScreen";
 import HomeScreen from "../screens/HomeScreen";
 import SplashScreen from "../screens/SplashScreen";
+import CameraScreen from "../screens/CameraScreen";
+import PreviewScreen from "../screens/PreviewScreen";
+import type { RootStackParamList } from "./types";
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const RootNavigator = () => {
   const { me, loading } = useAuth();
@@ -12,7 +15,15 @@ const RootNavigator = () => {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {me ? (
-        <Stack.Screen name="Home" component={HomeScreen} />
+        <>
+          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen
+            name="Camera"
+            component={CameraScreen}
+            options={{ animation: "slide_from_bottom" }}
+          />
+          <Stack.Screen name="Preview" component={PreviewScreen} />
+        </>
       ) : (
         <Stack.Screen name="SignUp" component={SignUpScreen} />
       )}
