@@ -6,9 +6,8 @@ interface Upload {
   userId: string;
   status: "pending" | "approved" | "rejected";
   videoKey: string;
-  metadataKey: string;
   videoUrl?: string;
-  metadataUrl?: string;
+  metadata?: Record<string, unknown>;
   reviewNote?: string;
   reviewedAt?: string;
   createdAt: string;
@@ -101,18 +100,17 @@ const Uploads = () => {
               />
             )}
 
-            <div className="row" style={{ gap: 16, marginBottom: 8 }}>
-              {u.metadataUrl && (
-                <a href={u.metadataUrl} target="_blank" rel="noreferrer">
-                  View metadata JSON
-                </a>
-              )}
-              {u.videoUrl && (
+            {u.metadata && Object.keys(u.metadata).length > 0 && (
+              <MetadataTable metadata={u.metadata} />
+            )}
+
+            {u.videoUrl && (
+              <div className="row" style={{ gap: 16, marginBottom: 8 }}>
                 <a href={u.videoUrl} target="_blank" rel="noreferrer">
                   Download video
                 </a>
-              )}
-            </div>
+              </div>
+            )}
 
             {u.reviewNote && (
               <div className="muted" style={{ marginBottom: 8 }}>
@@ -132,6 +130,63 @@ const Uploads = () => {
         ))
       )}
     </div>
+  );
+};
+
+interface MetadataTableProps {
+  metadata: Record<string, unknown>;
+}
+
+const MetadataTable = ({ metadata }: MetadataTableProps) => {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copy = async (key: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(key);
+      setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
+    } catch {
+      // Some browsers require https or user gesture; fall back to select
+    }
+  };
+
+  const rows = Object.entries(metadata);
+  if (rows.length === 0) return null;
+
+  return (
+    <table
+      style={{
+        marginBottom: 12,
+        background: "var(--panel-2)",
+        borderRadius: 6,
+      }}
+    >
+      <tbody>
+        {rows.map(([key, value]) => {
+          const display = typeof value === "string" ? value : JSON.stringify(value);
+          const canCopy = typeof value === "string" && value.length > 0;
+          return (
+            <tr key={key}>
+              <th style={{ width: 160, textTransform: "none", paddingLeft: 14 }}>{key}</th>
+              <td className="mono" style={{ wordBreak: "break-all" }}>
+                {display}
+              </td>
+              <td style={{ width: 90, textAlign: "right", paddingRight: 14 }}>
+                {canCopy && (
+                  <button
+                    className="secondary"
+                    style={{ padding: "4px 10px", fontSize: 12 }}
+                    onClick={() => void copy(key, display)}
+                  >
+                    {copied === key ? "Copied" : "Copy"}
+                  </button>
+                )}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 };
 

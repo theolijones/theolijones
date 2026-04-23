@@ -5,6 +5,7 @@ export type RootStackParamList = {
   Home: undefined;
   Camera: undefined;
   Preview: { videoUri: string; videoContentType: VideoContentType };
+  Metadata: { videoUri: string; videoContentType: VideoContentType };
 };
 
 declare global {

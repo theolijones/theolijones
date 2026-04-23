@@ -59,16 +59,6 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
   const ext =
     contentType === "video/quicktime" ? "mov" : contentType === "video/webm" ? "webm" : "mp4";
   const videoKey = `uploads/${p.userId}/${uploadId}/video.${ext}`;
-  const metadataKey = `uploads/${p.userId}/${uploadId}/metadata.json`;
-
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: buckets.media,
-      Key: metadataKey,
-      Body: JSON.stringify({ uploadId, userId: p.userId, createdAt: now, metadata }),
-      ContentType: "application/json",
-    })
-  );
 
   const record: UploadRecord = {
     uploadId,
@@ -76,7 +66,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     status: "draft",
     videoKey,
     videoContentType: contentType,
-    metadataKey,
+    metadata: metadata as Record<string, unknown>,
     createdAt: now,
     updatedAt: now,
   };

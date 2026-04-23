@@ -50,7 +50,7 @@ export interface UploadRecord {
   videoKey: string;
   videoContentType?: string;
   videoSizeBytes?: number;
-  metadataKey: string;
+  metadata: Record<string, unknown>;
   reviewNote?: string;
   reviewedBy?: string;
   reviewedAt?: string;

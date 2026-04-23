@@ -46,12 +46,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
         new GetObjectCommand({ Bucket: buckets.media, Key: u.videoKey }),
         { expiresIn: 3600 }
       );
-      const metadataUrl = await getSignedUrl(
-        s3,
-        new GetObjectCommand({ Bucket: buckets.media, Key: u.metadataKey }),
-        { expiresIn: 3600 }
-      );
-      return { ...u, videoUrl, metadataUrl };
+      return { ...u, videoUrl };
     })
   );
 
