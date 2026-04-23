@@ -5,6 +5,7 @@ import HomeScreen from "../screens/HomeScreen";
 import SplashScreen from "../screens/SplashScreen";
 import CameraScreen from "../screens/CameraScreen";
 import PreviewScreen from "../screens/PreviewScreen";
+import EditorScreen from "../screens/EditorScreen";
 import MetadataScreen from "../screens/MetadataScreen";
 import type { RootStackParamList } from "./types";
 
@@ -24,6 +25,7 @@ const RootNavigator = () => {
             options={{ animation: "slide_from_bottom" }}
           />
           <Stack.Screen name="Preview" component={PreviewScreen} />
+          <Stack.Screen name="Editor" component={EditorScreen} />
           <Stack.Screen name="Metadata" component={MetadataScreen} />
         </>
       ) : (

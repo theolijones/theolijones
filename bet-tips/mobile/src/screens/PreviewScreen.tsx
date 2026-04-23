@@ -38,7 +38,7 @@ const PreviewScreen = () => {
         </Pressable>
         <Pressable
           style={[styles.btn, styles.primaryBtn]}
-          onPress={() => nav.navigate("Metadata", { videoUri, videoContentType })}
+          onPress={() => nav.navigate("Editor", { videoUri, videoContentType })}
         >
           <Text style={styles.primaryText}>Next</Text>
         </Pressable>
