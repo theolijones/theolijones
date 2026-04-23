@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import {
+  Image,
   LayoutChangeEvent,
   Pressable,
   StyleSheet,
@@ -9,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
+import * as ImagePicker from "expo-image-picker";
 import {
   Gesture,
   GestureDetector,
@@ -25,30 +27,48 @@ import {
   type RouteProp,
 } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../navigation/types";
-import type { EdlBase, EdlTextLayer } from "../api/edl";
+import type { AssetRef, RootStackParamList } from "../navigation/types";
+import type {
+  EdlBase,
+  EdlImageLayer,
+  EdlTextLayer,
+} from "../api/edl";
+import type { ImageAssetContentType } from "../api/uploads";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Editor">;
 type EditorRoute = RouteProp<RootStackParamList, "Editor">;
 
-interface EditorTextLayer {
+interface EditorLayerCommon {
   id: string;
-  text: string;
-  // Normalized fraction of canvas (0..1)
   x: number;
   y: number;
   scale: number;
+}
+
+interface EditorTextLayer extends EditorLayerCommon {
+  type: "text";
+  text: string;
   color: string;
   fontFamily: "system" | "system-bold";
-  // Base font size in normalized canvas height (before scale multiplier)
   fontSizeRatio: number;
 }
+
+interface EditorImageLayer extends EditorLayerCommon {
+  type: "image";
+  localUri: string;
+  contentType: ImageAssetContentType;
+  widthRatio: number;
+  aspect: number;
+}
+
+type EditorLayer = EditorTextLayer | EditorImageLayer;
 
 const CANVAS_W = 1080;
 const CANVAS_H = 1920;
 
-const DEFAULT_TEXT_LAYER = (id: string): EditorTextLayer => ({
+const newTextLayer = (id: string): EditorTextLayer => ({
   id,
+  type: "text",
   text: "Double tap to edit",
   x: 0.5,
   y: 0.5,
@@ -58,12 +78,18 @@ const DEFAULT_TEXT_LAYER = (id: string): EditorTextLayer => ({
   fontSizeRatio: 0.06,
 });
 
+const contentTypeFromMime = (mime?: string): ImageAssetContentType => {
+  if (mime === "image/png") return "image/png";
+  if (mime === "image/webp") return "image/webp";
+  return "image/jpeg";
+};
+
 const EditorScreen = () => {
   const nav = useNavigation<Nav>();
   const route = useRoute<EditorRoute>();
   const { videoUri, videoContentType } = route.params;
   const video = useRef<Video | null>(null);
-  const [layers, setLayers] = useState<EditorTextLayer[]>([]);
+  const [layers, setLayers] = useState<EditorLayer[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [durationMs, setDurationMs] = useState<number>(0);
@@ -81,7 +107,36 @@ const EditorScreen = () => {
 
   const addText = () => {
     const id = `text-${Date.now()}`;
-    setLayers((ls) => [...ls, DEFAULT_TEXT_LAYER(id)]);
+    setLayers((ls) => [...ls, newTextLayer(id)]);
+    setSelectedId(id);
+    setEditingText("Double tap to edit");
+  };
+
+  const addImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.9,
+    });
+    if (res.canceled || res.assets.length === 0) return;
+    const asset = res.assets[0];
+    const aspect =
+      asset.width && asset.height ? asset.width / asset.height : 1;
+    const id = `image-${Date.now()}`;
+    const layer: EditorImageLayer = {
+      id,
+      type: "image",
+      localUri: asset.uri,
+      contentType: contentTypeFromMime(asset.mimeType ?? undefined),
+      x: 0.5,
+      y: 0.5,
+      scale: 1,
+      widthRatio: 0.4,
+      aspect,
+    };
+    setLayers((ls) => [...ls, layer]);
     setSelectedId(id);
   };
 
@@ -91,41 +146,65 @@ const EditorScreen = () => {
     setSelectedId(null);
   };
 
-  const updateLayer = (id: string, patch: Partial<EditorTextLayer>) => {
-    setLayers((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  const updateLayer = (id: string, patch: Partial<EditorLayer>) => {
+    setLayers((ls) =>
+      ls.map((l) => (l.id === id ? ({ ...l, ...patch } as EditorLayer) : l))
+    );
   };
 
   const selected = layers.find((l) => l.id === selectedId) ?? null;
 
   const commitTextEdit = () => {
-    if (!selectedId) return;
+    if (!selected || selected.type !== "text") return;
     const trimmed = editingText.trim();
-    if (trimmed.length > 0) updateLayer(selectedId, { text: trimmed });
-    setEditingText("");
+    if (trimmed.length > 0) updateLayer(selected.id, { text: trimmed });
   };
 
   const onNext = () => {
-    const edl: EdlBase = {
-      width: CANVAS_W,
-      height: CANVAS_H,
-      durationMs: Math.max(durationMs, 1000),
-      layers: layers.map<EdlTextLayer>((l) => ({
-        type: "text",
+    const end = Math.max(durationMs, 1000);
+    const assetRefs: AssetRef[] = layers
+      .filter((l): l is EditorImageLayer => l.type === "image")
+      .map((l) => ({ layerId: l.id, localUri: l.localUri, contentType: l.contentType }));
+
+    const edlLayers = layers.map((l) => {
+      const base = {
         id: l.id,
         startMs: 0,
-        endMs: Math.max(durationMs, 1000),
+        endMs: end,
         x: l.x,
         y: l.y,
         scale: l.scale,
         rotation: 0,
-        text: l.text,
-        fontSizeRatio: l.fontSizeRatio,
-        fontFamily: l.fontFamily,
-        color: l.color,
-        align: "center",
-      })),
+      };
+      if (l.type === "text") {
+        const t: EdlTextLayer = {
+          ...base,
+          type: "text",
+          text: l.text,
+          fontSizeRatio: l.fontSizeRatio,
+          fontFamily: l.fontFamily,
+          color: l.color,
+          align: "center",
+        };
+        return t;
+      }
+      const img: EdlImageLayer = {
+        ...base,
+        type: "image",
+        assetKey: "",
+        widthRatio: l.widthRatio,
+      };
+      return img;
+    });
+
+    const edl: EdlBase = {
+      width: CANVAS_W,
+      height: CANVAS_H,
+      durationMs: end,
+      layers: edlLayers,
     };
-    nav.navigate("Metadata", { videoUri, videoContentType, edl });
+
+    nav.navigate("Metadata", { videoUri, videoContentType, edl, assetRefs });
   };
 
   return (
@@ -155,14 +234,14 @@ const EditorScreen = () => {
               selected={l.id === selectedId}
               onSelect={() => {
                 setSelectedId(l.id);
-                setEditingText(l.text);
+                if (l.type === "text") setEditingText(l.text);
               }}
               onCommit={(patch) => updateLayer(l.id, patch)}
             />
           ))}
         </View>
 
-        {selected && (
+        {selected && selected.type === "text" && (
           <View style={styles.editRow}>
             <TextInput
               style={styles.textInput}
@@ -181,12 +260,24 @@ const EditorScreen = () => {
           </View>
         )}
 
+        {selected && selected.type === "image" && (
+          <View style={styles.editRow}>
+            <Text style={styles.selectedHint}>Drag to move, pinch to resize</Text>
+            <Pressable style={styles.deleteBtn} onPress={deleteSelected}>
+              <Text style={styles.deleteText}>Delete</Text>
+            </Pressable>
+          </View>
+        )}
+
         <View style={styles.toolbar}>
           <Pressable style={styles.toolBtn} onPress={() => nav.goBack()}>
             <Text style={styles.toolBtnText}>Back</Text>
           </Pressable>
           <Pressable style={[styles.toolBtn, styles.primaryBtn]} onPress={addText}>
             <Text style={styles.primaryText}>+ Text</Text>
+          </Pressable>
+          <Pressable style={[styles.toolBtn, styles.primaryBtn]} onPress={() => void addImage()}>
+            <Text style={styles.primaryText}>+ Image</Text>
           </Pressable>
           <Pressable style={[styles.toolBtn, styles.primaryBtn]} onPress={onNext}>
             <Text style={styles.primaryText}>Next</Text>
@@ -198,12 +289,12 @@ const EditorScreen = () => {
 };
 
 interface LayerViewProps {
-  layer: EditorTextLayer;
+  layer: EditorLayer;
   canvasW: number;
   canvasH: number;
   selected: boolean;
   onSelect: () => void;
-  onCommit: (patch: Partial<EditorTextLayer>) => void;
+  onCommit: (patch: Partial<EditorLayer>) => void;
 }
 
 const LayerView = ({
@@ -220,11 +311,6 @@ const LayerView = ({
   const startTx = useSharedValue(0);
   const startTy = useSharedValue(0);
   const startScale = useSharedValue(1);
-
-  const fontSizePx = useMemo(
-    () => Math.max(10, layer.fontSizeRatio * canvasH),
-    [canvasH, layer.fontSizeRatio]
-  );
 
   const pan = Gesture.Pan()
     .onStart(() => {
@@ -270,22 +356,72 @@ const LayerView = ({
   return (
     <GestureDetector gesture={combined}>
       <Animated.View style={[styles.layer, style]}>
-        <Text
-          style={[
-            styles.layerText,
-            {
-              fontSize: fontSizePx,
-              color: layer.color,
-              fontWeight: layer.fontFamily === "system-bold" ? "800" : "400",
-            },
-            selected && styles.layerSelected,
-          ]}
-          numberOfLines={3}
-        >
-          {layer.text}
-        </Text>
+        {layer.type === "text" ? (
+          <TextLayerContent layer={layer} canvasH={canvasH} selected={selected} />
+        ) : (
+          <ImageLayerContent layer={layer} canvasW={canvasW} selected={selected} />
+        )}
       </Animated.View>
     </GestureDetector>
+  );
+};
+
+const TextLayerContent = ({
+  layer,
+  canvasH,
+  selected,
+}: {
+  layer: EditorTextLayer;
+  canvasH: number;
+  selected: boolean;
+}) => {
+  const fontSizePx = useMemo(
+    () => Math.max(10, layer.fontSizeRatio * canvasH),
+    [canvasH, layer.fontSizeRatio]
+  );
+  return (
+    <Text
+      style={[
+        styles.layerText,
+        {
+          fontSize: fontSizePx,
+          color: layer.color,
+          fontWeight: layer.fontFamily === "system-bold" ? "800" : "400",
+        },
+        selected && styles.layerSelected,
+      ]}
+      numberOfLines={3}
+    >
+      {layer.text}
+    </Text>
+  );
+};
+
+const ImageLayerContent = ({
+  layer,
+  canvasW,
+  selected,
+}: {
+  layer: EditorImageLayer;
+  canvasW: number;
+  selected: boolean;
+}) => {
+  const widthPx = Math.max(40, layer.widthRatio * canvasW);
+  const heightPx = widthPx / Math.max(0.1, layer.aspect);
+  return (
+    <Image
+      source={{ uri: layer.localUri }}
+      style={[
+        {
+          width: widthPx,
+          height: heightPx,
+          marginLeft: -widthPx / 2,
+          marginTop: -heightPx / 2,
+        },
+        selected && styles.layerSelected,
+      ]}
+      resizeMode="contain"
+    />
   );
 };
 
@@ -319,11 +455,13 @@ const styles = StyleSheet.create({
   editRow: {
     flexDirection: "row",
     gap: 8,
+    alignItems: "center",
     backgroundColor: "#0f172a",
     padding: 12,
     borderTopColor: "#1e293b",
     borderTopWidth: 1,
   },
+  selectedHint: { flex: 1, color: "#94a3b8", fontSize: 13 },
   textInput: {
     flex: 1,
     backgroundColor: "#1e293b",
@@ -338,6 +476,7 @@ const styles = StyleSheet.create({
   deleteBtn: {
     backgroundColor: "#7f1d1d",
     paddingHorizontal: 14,
+    paddingVertical: 10,
     justifyContent: "center",
     borderRadius: 8,
   },

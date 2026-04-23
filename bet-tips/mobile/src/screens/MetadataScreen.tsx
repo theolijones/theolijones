@@ -37,7 +37,7 @@ const coerceForSubmit = (field: SchemaField, raw: FieldValue): unknown => {
 const MetadataScreen = () => {
   const nav = useNavigation<Nav>();
   const route = useRoute<MetadataRoute>();
-  const { videoUri, videoContentType, edl } = route.params;
+  const { videoUri, videoContentType, edl, assetRefs } = route.params;
 
   const [fields, setFields] = useState<SchemaField[] | null>(null);
   const [values, setValues] = useState<Record<string, FieldValue>>({});
@@ -101,6 +101,7 @@ const MetadataScreen = () => {
         videoContentType,
         metadata,
         edl,
+        assets: assetRefs,
         onProgress: setProgress,
       });
       nav.reset({ index: 0, routes: [{ name: "Home" }] });

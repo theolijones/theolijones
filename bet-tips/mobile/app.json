@@ -21,6 +21,12 @@
           "microphonePermission": "Allow Bet Tips to use the microphone so your videos have sound.",
           "recordAudioAndroid": true
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Bet Tips to access your photos so you can add stickers and logos to your videos."
+        }
       ]
     ],
     "extra": {
