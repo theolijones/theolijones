@@ -41,13 +41,15 @@ export interface TokenRecord {
   expiresAt?: string;
 }
 
-export type UploadStatus = "pending" | "approved" | "rejected";
+export type UploadStatus = "draft" | "pending" | "approved" | "rejected";
 
 export interface UploadRecord {
   uploadId: string;
   userId: string;
   status: UploadStatus;
   videoKey: string;
+  videoContentType?: string;
+  videoSizeBytes?: number;
   metadataKey: string;
   reviewNote?: string;
   reviewedBy?: string;

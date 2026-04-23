@@ -143,6 +143,14 @@ export class BetTipsStack extends cdk.Stack {
     usersTable.grantReadData(uploadsListFn);
     mediaBucket.grantRead(uploadsListFn);
 
+    const uploadsCreateFn = fn("UploadsCreateFn", "uploads-create.ts");
+    uploadsTable.grantWriteData(uploadsCreateFn);
+    mediaBucket.grantPut(uploadsCreateFn);
+
+    const uploadsCompleteFn = fn("UploadsCompleteFn", "uploads-complete.ts");
+    uploadsTable.grantReadWriteData(uploadsCompleteFn);
+    mediaBucket.grantRead(uploadsCompleteFn);
+
     const uploadsReviewFn = fn("UploadsReviewFn", "uploads-review.ts");
     uploadsTable.grantReadWriteData(uploadsReviewFn);
 
@@ -184,6 +192,8 @@ export class BetTipsStack extends cdk.Stack {
       api.addRoutes({ path: p, methods: [m], integration: integ(f), authorizer });
 
     protectedRoute("/me", apigw.HttpMethod.GET, meFn);
+    protectedRoute("/uploads", apigw.HttpMethod.POST, uploadsCreateFn);
+    protectedRoute("/uploads/{uploadId}/complete", apigw.HttpMethod.POST, uploadsCompleteFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.GET, tokensListFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.POST, tokensCreateFn);
     protectedRoute("/admin/tokens/{token}", apigw.HttpMethod.DELETE, tokensRevokeFn);
