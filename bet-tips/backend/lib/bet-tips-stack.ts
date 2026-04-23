@@ -9,6 +9,7 @@ import * as authorizers from "aws-cdk-lib/aws-apigatewayv2-authorizers";
 import * as secrets from "aws-cdk-lib/aws-secretsmanager";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import { DockerImageCode, DockerImageFunction } from "aws-cdk-lib/aws-lambda";
 
 export class BetTipsStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -147,9 +148,30 @@ export class BetTipsStack extends cdk.Stack {
     uploadsTable.grantWriteData(uploadsCreateFn);
     mediaBucket.grantPut(uploadsCreateFn);
 
+    const uploadsAssetFn = fn("UploadsAssetFn", "uploads-asset.ts");
+    uploadsTable.grantReadWriteData(uploadsAssetFn);
+    mediaBucket.grantPut(uploadsAssetFn);
+
+    const renderWorkerFn = new DockerImageFunction(this, "RenderWorkerFn", {
+      code: DockerImageCode.fromImageAsset(path.join(__dirname, ".."), {
+        file: "render-worker/Dockerfile",
+      }),
+      architecture: lambda.Architecture.ARM_64,
+      memorySize: 3008,
+      timeout: cdk.Duration.minutes(10),
+      environment: {
+        UPLOADS_TABLE: uploadsTable.tableName,
+        MEDIA_BUCKET: mediaBucket.bucketName,
+      },
+    });
+    uploadsTable.grantReadWriteData(renderWorkerFn);
+    mediaBucket.grantReadWrite(renderWorkerFn);
+
     const uploadsCompleteFn = fn("UploadsCompleteFn", "uploads-complete.ts");
     uploadsTable.grantReadWriteData(uploadsCompleteFn);
     mediaBucket.grantRead(uploadsCompleteFn);
+    uploadsCompleteFn.addEnvironment("RENDER_FN_NAME", renderWorkerFn.functionName);
+    renderWorkerFn.grantInvoke(uploadsCompleteFn);
 
     const uploadsReviewFn = fn("UploadsReviewFn", "uploads-review.ts");
     uploadsTable.grantReadWriteData(uploadsReviewFn);
@@ -194,6 +216,7 @@ export class BetTipsStack extends cdk.Stack {
     protectedRoute("/me", apigw.HttpMethod.GET, meFn);
     protectedRoute("/uploads", apigw.HttpMethod.POST, uploadsCreateFn);
     protectedRoute("/uploads/{uploadId}/complete", apigw.HttpMethod.POST, uploadsCompleteFn);
+    protectedRoute("/uploads/{uploadId}/assets", apigw.HttpMethod.POST, uploadsAssetFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.GET, tokensListFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.POST, tokensCreateFn);
     protectedRoute("/admin/tokens/{token}", apigw.HttpMethod.DELETE, tokensRevokeFn);

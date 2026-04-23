@@ -1,12 +1,21 @@
 import { api } from "./client";
+import type { EdlBase } from "./edl";
 
 export type VideoContentType = "video/mp4" | "video/quicktime" | "video/webm";
+export type ImageAssetContentType = "image/png" | "image/jpeg" | "image/webp";
 
 export interface CreateUploadResponse {
   uploadId: string;
   videoKey: string;
   videoUploadUrl: string;
   videoContentType: VideoContentType;
+  expiresIn: number;
+}
+
+export interface AssetResponse {
+  assetId: string;
+  assetKey: string;
+  uploadUrl: string;
   expiresIn: number;
 }
 
@@ -21,6 +30,8 @@ export interface SubmitUploadArgs {
   videoUri: string;
   videoContentType?: VideoContentType;
   metadata?: Record<string, unknown>;
+  edl?: EdlBase;
+  assets?: { localUri: string; contentType: ImageAssetContentType; layerId: string }[];
   onProgress?: (fraction: number) => void;
 }
 
@@ -48,24 +59,69 @@ export const createUpload = (args: {
 }): Promise<CreateUploadResponse> =>
   api<CreateUploadResponse>("/uploads", {
     method: "POST",
-    body: { metadata: args.metadata ?? {}, videoContentType: args.videoContentType ?? "video/mp4" },
+    body: {
+      metadata: args.metadata ?? {},
+      videoContentType: args.videoContentType ?? "video/mp4",
+    },
   });
 
-export const completeUpload = (uploadId: string): Promise<CompletedUpload> =>
-  api<CompletedUpload>(`/uploads/${uploadId}/complete`, { method: "POST", body: {} });
+export const requestAsset = (uploadId: string, contentType: ImageAssetContentType): Promise<AssetResponse> =>
+  api<AssetResponse>(`/uploads/${uploadId}/assets`, {
+    method: "POST",
+    body: { contentType },
+  });
+
+export const completeUpload = (uploadId: string, edl?: EdlBase): Promise<CompletedUpload> =>
+  api<CompletedUpload>(`/uploads/${uploadId}/complete`, {
+    method: "POST",
+    body: edl ? { edl } : {},
+  });
+
+const uploadLocalFile = async (
+  localUri: string,
+  targetUrl: string,
+  contentType: string
+): Promise<void> => {
+  const fileRes = await fetch(localUri);
+  if (!fileRes.ok) throw new Error(`failed to read ${localUri}`);
+  const blob = await fileRes.blob();
+  await putWithProgress(targetUrl, blob, contentType);
+};
 
 export const submitUpload = async ({
   videoUri,
   videoContentType = "video/mp4",
   metadata,
+  edl,
+  assets = [],
   onProgress,
 }: SubmitUploadArgs): Promise<CompletedUpload> => {
   const create = await createUpload({ metadata, videoContentType });
 
+  // Upload assets first; collect layerId -> assetKey and swap into the EDL
+  // before completing, since the renderer dereferences assetKey from the EDL.
+  const layerIdToAssetKey = new Map<string, string>();
+  for (const asset of assets) {
+    const presign = await requestAsset(create.uploadId, asset.contentType);
+    await uploadLocalFile(asset.localUri, presign.uploadUrl, asset.contentType);
+    layerIdToAssetKey.set(asset.layerId, presign.assetKey);
+  }
+
+  const resolvedEdl = edl
+    ? {
+        ...edl,
+        layers: edl.layers.map((l) =>
+          l.type === "image" && layerIdToAssetKey.has(l.id)
+            ? { ...l, assetKey: layerIdToAssetKey.get(l.id)! }
+            : l
+        ),
+      }
+    : undefined;
+
   const fileRes = await fetch(videoUri);
   if (!fileRes.ok) throw new Error(`failed to read video at ${videoUri}`);
   const blob = await fileRes.blob();
-
   await putWithProgress(create.videoUploadUrl, blob, videoContentType, onProgress);
-  return completeUpload(create.uploadId);
+
+  return completeUpload(create.uploadId, resolvedEdl);
 };

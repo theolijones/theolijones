@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+cdk.out
+dist
+**/dist
+.git
+*.log
+lambda
+lib
+bin
+scripts
+cdk.json
+tsconfig.json
+package-lock.json

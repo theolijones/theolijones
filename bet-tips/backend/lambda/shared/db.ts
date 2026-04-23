@@ -43,6 +43,14 @@ export interface TokenRecord {
 
 export type UploadStatus = "draft" | "pending" | "approved" | "rejected";
 
+export type RenderStatus = "not_required" | "queued" | "rendering" | "done" | "failed";
+
+export interface UploadAsset {
+  assetId: string;
+  assetKey: string;
+  contentType: string;
+}
+
 export interface UploadRecord {
   uploadId: string;
   userId: string;
@@ -51,6 +59,13 @@ export interface UploadRecord {
   videoContentType?: string;
   videoSizeBytes?: number;
   metadata: Record<string, unknown>;
+  edl?: import("./edl").EdlBase;
+  assets?: UploadAsset[];
+  renderStatus?: RenderStatus;
+  renderedVideoKey?: string;
+  renderError?: string;
+  renderStartedAt?: string;
+  renderCompletedAt?: string;
   reviewNote?: string;
   reviewedBy?: string;
   reviewedAt?: string;

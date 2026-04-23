@@ -67,6 +67,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     videoKey,
     videoContentType: contentType,
     metadata: metadata as Record<string, unknown>,
+    renderStatus: "not_required",
     createdAt: now,
     updatedAt: now,
   };
