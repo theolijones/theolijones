@@ -25,9 +25,17 @@ const HomeScreen = () => {
         >
           <Text style={styles.recordText}>Record a tip</Text>
         </Pressable>
-        <Pressable style={styles.signOut} onPress={signOut}>
-          <Text style={styles.signOutText}>Sign out</Text>
-        </Pressable>
+        <View style={styles.bottomStack}>
+          <Pressable
+            style={styles.secondary}
+            onPress={() => nav.navigate("MyUploads")}
+          >
+            <Text style={styles.secondaryText}>My tips</Text>
+          </Pressable>
+          <Pressable style={styles.signOut} onPress={signOut}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -48,6 +56,16 @@ const styles = StyleSheet.create({
   },
   recordPressed: { opacity: 0.85 },
   recordText: { color: "#fff", fontSize: 18, fontWeight: "700" },
+  bottomStack: { gap: 8 },
+  secondary: {
+    backgroundColor: "#1e293b",
+    borderWidth: 1,
+    borderColor: "#334155",
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  secondaryText: { color: "#e2e8f0", fontSize: 15, fontWeight: "600" },
   signOut: {
     borderWidth: 1,
     borderColor: "#334155",

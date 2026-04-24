@@ -155,6 +155,10 @@ export class BetTipsStack extends cdk.Stack {
     uploadsTable.grantReadWriteData(uploadsAssetFn);
     mediaBucket.grantPut(uploadsAssetFn);
 
+    const uploadsMineFn = fn("UploadsMineFn", "uploads-mine.ts");
+    uploadsTable.grantReadData(uploadsMineFn);
+    mediaBucket.grantRead(uploadsMineFn);
+
     const renderWorkerFn = new DockerImageFunction(this, "RenderWorkerFn", {
       code: DockerImageCode.fromImageAsset(path.join(__dirname, ".."), {
         file: "render-worker/Dockerfile",
@@ -220,6 +224,7 @@ export class BetTipsStack extends cdk.Stack {
     protectedRoute("/me", apigw.HttpMethod.GET, meFn);
     protectedRoute("/me/push-token", apigw.HttpMethod.POST, mePushTokenFn);
     protectedRoute("/uploads", apigw.HttpMethod.POST, uploadsCreateFn);
+    protectedRoute("/uploads", apigw.HttpMethod.GET, uploadsMineFn);
     protectedRoute("/uploads/{uploadId}/complete", apigw.HttpMethod.POST, uploadsCompleteFn);
     protectedRoute("/uploads/{uploadId}/assets", apigw.HttpMethod.POST, uploadsAssetFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.GET, tokensListFn);

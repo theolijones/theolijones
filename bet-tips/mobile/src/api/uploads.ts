@@ -77,6 +77,23 @@ export const completeUpload = (uploadId: string, edl?: EdlBase): Promise<Complet
     body: edl ? { edl } : {},
   });
 
+export type RenderStatus = "not_required" | "queued" | "rendering" | "done" | "failed";
+
+export interface MyUpload {
+  uploadId: string;
+  status: "pending" | "approved" | "rejected";
+  renderStatus?: RenderStatus;
+  renderedVideoUrl?: string;
+  renderError?: string;
+  reviewNote?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export const listMyUploads = (): Promise<{ uploads: MyUpload[] }> =>
+  api<{ uploads: MyUpload[] }>("/uploads");
+
 const uploadLocalFile = async (
   localUri: string,
   targetUrl: string,

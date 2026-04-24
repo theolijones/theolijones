@@ -7,6 +7,7 @@ import CameraScreen from "../screens/CameraScreen";
 import PreviewScreen from "../screens/PreviewScreen";
 import EditorScreen from "../screens/EditorScreen";
 import MetadataScreen from "../screens/MetadataScreen";
+import MyUploadsScreen from "../screens/MyUploadsScreen";
 import type { RootStackParamList } from "./types";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -27,6 +28,7 @@ const RootNavigator = () => {
           <Stack.Screen name="Preview" component={PreviewScreen} />
           <Stack.Screen name="Editor" component={EditorScreen} />
           <Stack.Screen name="Metadata" component={MetadataScreen} />
+          <Stack.Screen name="MyUploads" component={MyUploadsScreen} />
         </>
       ) : (
         <Stack.Screen name="SignUp" component={SignUpScreen} />

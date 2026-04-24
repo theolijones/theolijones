@@ -19,6 +19,7 @@ export type RootStackParamList = {
     edl?: EdlBase;
     assetRefs?: AssetRef[];
   };
+  MyUploads: undefined;
 };
 
 declare global {
