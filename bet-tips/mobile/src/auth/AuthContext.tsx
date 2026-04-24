@@ -8,6 +8,7 @@ import {
 } from "react";
 import { api } from "../api/client";
 import { storage } from "./storage";
+import { clearPushToken, registerForPushNotifications } from "../push/register";
 
 export interface Me {
   userId: string;
@@ -38,6 +39,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const user = await api<Me>("/me");
         setMe(user);
+        void registerForPushNotifications();
       } catch {
         await storage.clear();
       } finally {
@@ -59,9 +61,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
     await storage.set(data.accessToken, data.refreshToken);
     setMe(data.user);
+    void registerForPushNotifications();
   };
 
   const signOut = async () => {
+    await clearPushToken();
     await storage.clear();
     setMe(null);
   };

@@ -130,6 +130,9 @@ export class BetTipsStack extends cdk.Stack {
     const meFn = fn("MeFn", "me.ts");
     usersTable.grantReadData(meFn);
 
+    const mePushTokenFn = fn("MePushTokenFn", "me-push-token.ts");
+    usersTable.grantReadWriteData(mePushTokenFn);
+
     const tokensListFn = fn("TokensListFn", "tokens-list.ts");
     tokensTable.grantReadData(tokensListFn);
 
@@ -175,6 +178,7 @@ export class BetTipsStack extends cdk.Stack {
 
     const uploadsReviewFn = fn("UploadsReviewFn", "uploads-review.ts");
     uploadsTable.grantReadWriteData(uploadsReviewFn);
+    usersTable.grantReadData(uploadsReviewFn);
 
     const schemaGetFn = fn("SchemaGetFn", "schema-get.ts");
     schemaTable.grantReadData(schemaGetFn);
@@ -214,6 +218,7 @@ export class BetTipsStack extends cdk.Stack {
       api.addRoutes({ path: p, methods: [m], integration: integ(f), authorizer });
 
     protectedRoute("/me", apigw.HttpMethod.GET, meFn);
+    protectedRoute("/me/push-token", apigw.HttpMethod.POST, mePushTokenFn);
     protectedRoute("/uploads", apigw.HttpMethod.POST, uploadsCreateFn);
     protectedRoute("/uploads/{uploadId}/complete", apigw.HttpMethod.POST, uploadsCompleteFn);
     protectedRoute("/uploads/{uploadId}/assets", apigw.HttpMethod.POST, uploadsAssetFn);

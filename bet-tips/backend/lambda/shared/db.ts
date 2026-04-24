@@ -26,6 +26,7 @@ export interface UserRecord {
   email?: string;
   passwordHash?: string;
   signupTokenUsed?: string;
+  expoPushToken?: string;
   createdAt: string;
   updatedAt: string;
 }

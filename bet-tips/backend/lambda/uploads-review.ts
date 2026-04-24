@@ -1,6 +1,6 @@
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
-import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { ddb, tables, type UserRole } from "./shared/db";
+import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { ddb, tables, type UploadRecord, type UserRecord, type UserRole } from "./shared/db";
 import { principalFrom, requireAdmin } from "./shared/context";
 import { bad, forbidden, ok, parseJson, unauthorized } from "./shared/http";
 
@@ -8,6 +8,26 @@ interface ReviewBody {
   decision: "approved" | "rejected";
   note?: string;
 }
+
+const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+
+const notifyRejection = async (pushToken: string, note: string): Promise<void> => {
+  try {
+    await fetch(EXPO_PUSH_URL, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        to: pushToken,
+        sound: "default",
+        title: "Your tip was rejected",
+        body: note,
+        data: { type: "rejection" },
+      }),
+    });
+  } catch (e) {
+    console.warn("expo push failed", (e as Error).message);
+  }
+};
 
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
   userId: string;
@@ -58,6 +78,20 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
       ReturnValues: "ALL_NEW",
     })
   );
+
+  if (body.decision === "rejected") {
+    const updated = res.Attributes as UploadRecord | undefined;
+    const ownerId = updated?.userId;
+    if (ownerId) {
+      const user = await ddb.send(
+        new GetCommand({ TableName: tables.users, Key: { userId: ownerId } })
+      );
+      const pushToken = (user.Item as UserRecord | undefined)?.expoPushToken;
+      if (pushToken) {
+        await notifyRejection(pushToken, body.note ?? "Please review and resubmit.");
+      }
+    }
+  }
 
   return ok(res.Attributes);
 };
