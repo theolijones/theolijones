@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   LayoutChangeEvent,
@@ -43,6 +43,8 @@ interface EditorLayerCommon {
   x: number;
   y: number;
   scale: number;
+  /** Radians clockwise. Converted to degrees on export. */
+  rotation: number;
 }
 
 interface EditorTextLayer extends EditorLayerCommon {
@@ -69,10 +71,11 @@ const CANVAS_H = 1920;
 const newTextLayer = (id: string): EditorTextLayer => ({
   id,
   type: "text",
-  text: "Double tap to edit",
+  text: "",
   x: 0.5,
   y: 0.5,
   scale: 1,
+  rotation: 0,
   color: "#ffffff",
   fontFamily: "system-bold",
   fontSizeRatio: 0.06,
@@ -89,11 +92,23 @@ const EditorScreen = () => {
   const route = useRoute<EditorRoute>();
   const { videoUri, videoContentType } = route.params;
   const video = useRef<Video | null>(null);
+  const inputRef = useRef<TextInput | null>(null);
   const [layers, setLayers] = useState<EditorLayer[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [durationMs, setDurationMs] = useState<number>(0);
-  const [editingText, setEditingText] = useState<string>("");
+
+  const selected = layers.find((l) => l.id === selectedId) ?? null;
+
+  // Whenever selection moves to a text layer, give the caption input focus
+  // so the user can type immediately.
+  useEffect(() => {
+    if (selected?.type === "text") {
+      const t = setTimeout(() => inputRef.current?.focus(), 50);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [selectedId, selected?.type]);
 
   const onCanvasLayout = (e: LayoutChangeEvent) => {
     const { width, height } = e.nativeEvent.layout;
@@ -109,7 +124,6 @@ const EditorScreen = () => {
     const id = `text-${Date.now()}`;
     setLayers((ls) => [...ls, newTextLayer(id)]);
     setSelectedId(id);
-    setEditingText("Double tap to edit");
   };
 
   const addImage = async () => {
@@ -133,6 +147,7 @@ const EditorScreen = () => {
       x: 0.5,
       y: 0.5,
       scale: 1,
+      rotation: 0,
       widthRatio: 0.4,
       aspect,
     };
@@ -152,12 +167,9 @@ const EditorScreen = () => {
     );
   };
 
-  const selected = layers.find((l) => l.id === selectedId) ?? null;
-
-  const commitTextEdit = () => {
+  const onTextChange = (text: string) => {
     if (!selected || selected.type !== "text") return;
-    const trimmed = editingText.trim();
-    if (trimmed.length > 0) updateLayer(selected.id, { text: trimmed });
+    updateLayer(selected.id, { text });
   };
 
   const onNext = () => {
@@ -165,6 +177,8 @@ const EditorScreen = () => {
     const assetRefs: AssetRef[] = layers
       .filter((l): l is EditorImageLayer => l.type === "image")
       .map((l) => ({ layerId: l.id, localUri: l.localUri, contentType: l.contentType }));
+
+    const toDeg = (rad: number) => (rad * 180) / Math.PI;
 
     const edlLayers = layers.map((l) => {
       const base = {
@@ -174,9 +188,10 @@ const EditorScreen = () => {
         x: l.x,
         y: l.y,
         scale: l.scale,
-        rotation: 0,
+        rotation: toDeg(l.rotation),
       };
       if (l.type === "text") {
+        if (l.text.trim().length === 0) return null;
         const t: EdlTextLayer = {
           ...base,
           type: "text",
@@ -195,7 +210,7 @@ const EditorScreen = () => {
         widthRatio: l.widthRatio,
       };
       return img;
-    });
+    }).filter((l): l is EdlTextLayer | EdlImageLayer => l !== null);
 
     const edl: EdlBase = {
       width: CANVAS_W,
@@ -232,10 +247,7 @@ const EditorScreen = () => {
               canvasW={canvas.w}
               canvasH={canvas.h}
               selected={l.id === selectedId}
-              onSelect={() => {
-                setSelectedId(l.id);
-                if (l.type === "text") setEditingText(l.text);
-              }}
+              onSelect={() => setSelectedId(l.id)}
               onCommit={(patch) => updateLayer(l.id, patch)}
             />
           ))}
@@ -244,15 +256,15 @@ const EditorScreen = () => {
         {selected && selected.type === "text" && (
           <View style={styles.editRow}>
             <TextInput
+              ref={inputRef}
               style={styles.textInput}
-              value={editingText}
-              onChangeText={setEditingText}
+              value={selected.text}
+              onChangeText={onTextChange}
               placeholder="Type your caption"
               placeholderTextColor="#64748b"
               autoCorrect={false}
-              onEndEditing={commitTextEdit}
-              onSubmitEditing={commitTextEdit}
               returnKeyType="done"
+              blurOnSubmit
             />
             <Pressable style={styles.deleteBtn} onPress={deleteSelected}>
               <Text style={styles.deleteText}>Delete</Text>
@@ -262,7 +274,7 @@ const EditorScreen = () => {
 
         {selected && selected.type === "image" && (
           <View style={styles.editRow}>
-            <Text style={styles.selectedHint}>Drag to move, pinch to resize</Text>
+            <Text style={styles.selectedHint}>Drag · pinch · twist to rotate</Text>
             <Pressable style={styles.deleteBtn} onPress={deleteSelected}>
               <Text style={styles.deleteText}>Delete</Text>
             </Pressable>
@@ -308,9 +320,11 @@ const LayerView = ({
   const tx = useSharedValue(layer.x * canvasW);
   const ty = useSharedValue(layer.y * canvasH);
   const scale = useSharedValue(layer.scale);
+  const rotation = useSharedValue(layer.rotation);
   const startTx = useSharedValue(0);
   const startTy = useSharedValue(0);
   const startScale = useSharedValue(1);
+  const startRotation = useSharedValue(0);
 
   const pan = Gesture.Pan()
     .onStart(() => {
@@ -341,14 +355,26 @@ const LayerView = ({
       runOnJS(onCommit)({ scale: scale.value });
     });
 
+  const rotate = Gesture.Rotation()
+    .onStart(() => {
+      startRotation.value = rotation.value;
+    })
+    .onUpdate((e) => {
+      rotation.value = startRotation.value + e.rotation;
+    })
+    .onEnd(() => {
+      runOnJS(onCommit)({ rotation: rotation.value });
+    });
+
   const tap = Gesture.Tap().onStart(() => runOnJS(onSelect)());
 
-  const combined = Gesture.Simultaneous(pan, pinch, tap);
+  const combined = Gesture.Simultaneous(pan, pinch, rotate, tap);
 
   const style = useAnimatedStyle(() => ({
     transform: [
       { translateX: tx.value },
       { translateY: ty.value },
+      { rotate: `${rotation.value}rad` },
       { scale: scale.value },
     ],
   }));
@@ -379,20 +405,23 @@ const TextLayerContent = ({
     () => Math.max(10, layer.fontSizeRatio * canvasH),
     [canvasH, layer.fontSizeRatio]
   );
+  const displayText = layer.text.length > 0 ? layer.text : "Tap to type";
+  const isPlaceholder = layer.text.length === 0;
   return (
     <Text
       style={[
         styles.layerText,
         {
           fontSize: fontSizePx,
-          color: layer.color,
+          color: isPlaceholder ? "#cbd5e1" : layer.color,
           fontWeight: layer.fontFamily === "system-bold" ? "800" : "400",
+          opacity: isPlaceholder ? 0.8 : 1,
         },
         selected && styles.layerSelected,
       ]}
       numberOfLines={3}
     >
-      {layer.text}
+      {displayText}
     </Text>
   );
 };
@@ -441,9 +470,9 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0,0,0,0.6)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
-    marginLeft: -100,
+    marginLeft: -140,
     marginTop: -30,
-    width: 200,
+    width: 280,
   },
   layerSelected: {
     borderWidth: 1,

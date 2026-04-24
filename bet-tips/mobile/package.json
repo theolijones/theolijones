@@ -17,6 +17,7 @@
     "expo-av": "~14.0.7",
     "expo-camera": "~15.0.16",
     "expo-clipboard": "~6.0.3",
+    "expo-dev-client": "~4.0.29",
     "expo-device": "~6.0.2",
     "expo-image-picker": "~15.1.0",
     "expo-notifications": "~0.28.19",

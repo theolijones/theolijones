@@ -174,27 +174,50 @@ const buildFfmpegArgs = (
   lastLabel = "[v0]";
 
   let stepIdx = 1;
+  const durationSec = Math.max(1, edl.durationMs / 1000).toFixed(3);
 
   for (const layer of edl.layers) {
     const startSec = (layer.startMs / 1000).toFixed(3);
     const endSec = (layer.endMs / 1000).toFixed(3);
     const enable = `between(t,${startSec},${endSec})`;
     const nextLabel = `[v${stepIdx}]`;
+    const rotRad = (layer.rotation * Math.PI) / 180;
+    const rotated = Math.abs(rotRad) > 0.001;
 
     if (layer.type === "text") {
-      filters.push(buildTextFilter(layer, canvasW, canvasH, lastLabel, nextLabel, enable));
+      filters.push(
+        ...buildTextFilterChain(
+          layer,
+          canvasW,
+          canvasH,
+          lastLabel,
+          nextLabel,
+          enable,
+          durationSec,
+          rotRad,
+          stepIdx
+        )
+      );
     } else if (layer.type === "image") {
       const imgLabel = `[${imageInputIdx}:v]`;
       imageInputIdx++;
-      const scaledLabel = `[img${stepIdx}]`;
       const targetW = Math.round(layer.widthRatio * layer.scale * canvasW);
-      filters.push(`${imgLabel}scale=${targetW}:-1[img${stepIdx}s]`);
-      filters.push(`[img${stepIdx}s]format=rgba${scaledLabel}`);
+      const scaledLabel = `[img${stepIdx}s]`;
+      const readyLabel = rotated ? `[img${stepIdx}r]` : `[img${stepIdx}]`;
 
-      const xExpr = `(W*${layer.x})-(w/2)`;
-      const yExpr = `(H*${layer.y})-(h/2)`;
+      filters.push(`${imgLabel}scale=${targetW}:-1,format=rgba${scaledLabel}`);
+      if (rotated) {
+        filters.push(
+          `${scaledLabel}rotate=${rotRad.toFixed(6)}:c=black@0:ow=rotw(${rotRad.toFixed(6)}):oh=roth(${rotRad.toFixed(6)})${readyLabel}`
+        );
+      } else {
+        filters.push(`${scaledLabel}null${readyLabel}`);
+      }
+
+      const xExpr = `(W*${layer.x})-(overlay_w/2)`;
+      const yExpr = `(H*${layer.y})-(overlay_h/2)`;
       filters.push(
-        `${lastLabel}${scaledLabel}overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'${nextLabel}`
+        `${lastLabel}${readyLabel}overlay=x=${xExpr}:y=${yExpr}:enable='${enable}'${nextLabel}`
       );
     }
 
@@ -229,45 +252,80 @@ const buildFfmpegArgs = (
   return args;
 };
 
-const buildTextFilter = (
+const buildTextFilterChain = (
   layer: EdlTextLayer,
   canvasW: number,
   canvasH: number,
   inLabel: string,
   outLabel: string,
-  enable: string
-): string => {
+  enable: string,
+  durationSec: string,
+  rotRad: number,
+  stepIdx: number
+): string[] => {
   const fontFile = layer.fontFamily === "system-bold" ? FONT_BOLD : FONT_REG;
   const fontSize = Math.max(8, Math.round(layer.fontSizeRatio * layer.scale * canvasH));
   const text = escapeDrawtext(layer.text);
   const color = sanitizeColor(layer.color) ?? "white";
-  const xExpr =
-    layer.align === "left"
-      ? `(w*${layer.x})`
-      : layer.align === "right"
-        ? `(w*${layer.x})-text_w`
-        : `(w*${layer.x})-(text_w/2)`;
-  const yExpr = `(h*${layer.y})-(text_h/2)`;
 
-  const parts = [
+  const drawtextBase = [
     `fontfile=${fontFile}`,
     `text='${text}'`,
     `fontsize=${fontSize}`,
     `fontcolor=${color}`,
-    `x=${xExpr}`,
-    `y=${yExpr}`,
-    `enable='${enable}'`,
   ];
-
   if (layer.background) {
     const bg = sanitizeColor(layer.background);
     if (bg) {
-      parts.push(`box=1`, `boxcolor=${bg}`, `boxborderw=${Math.round(fontSize * 0.25)}`);
+      drawtextBase.push(`box=1`, `boxcolor=${bg}`, `boxborderw=${Math.round(fontSize * 0.25)}`);
     }
   }
 
-  void canvasW;
-  return `${inLabel}drawtext=${parts.join(":")}${outLabel}`;
+  const rotated = Math.abs(rotRad) > 0.001;
+
+  if (!rotated) {
+    // Fast path: draw directly onto the main stream. Positions reference the
+    // full canvas (w/h inside drawtext).
+    const xExpr =
+      layer.align === "left"
+        ? `(w*${layer.x})`
+        : layer.align === "right"
+          ? `(w*${layer.x})-text_w`
+          : `(w*${layer.x})-(text_w/2)`;
+    const yExpr = `(h*${layer.y})-(text_h/2)`;
+    const parts = [
+      ...drawtextBase,
+      `x=${xExpr}`,
+      `y=${yExpr}`,
+      `enable='${enable}'`,
+    ];
+    return [`${inLabel}drawtext=${parts.join(":")}${outLabel}`];
+  }
+
+  // Rotated path: draw the text onto a transparent sub-canvas, rotate the
+  // sub-canvas around its center, then overlay it at the user's position.
+  const textLen = layer.text.length;
+  const subW = Math.min(canvasW, Math.max(200, Math.round(textLen * fontSize * 0.7 + fontSize)));
+  const subH = Math.max(40, Math.round(fontSize * 2));
+
+  const bgLabel = `[textbg${stepIdx}]`;
+  const drawnLabel = `[textdrawn${stepIdx}]`;
+  const rotLabel = `[textrot${stepIdx}]`;
+
+  const subDraw = [
+    ...drawtextBase,
+    `x=(w-text_w)/2`,
+    `y=(h-text_h)/2`,
+  ];
+
+  const rotFixed = rotRad.toFixed(6);
+
+  return [
+    `color=c=black@0:s=${subW}x${subH}:d=${durationSec},format=rgba${bgLabel}`,
+    `${bgLabel}drawtext=${subDraw.join(":")}${drawnLabel}`,
+    `${drawnLabel}rotate=${rotFixed}:c=black@0:ow=rotw(${rotFixed}):oh=roth(${rotFixed})${rotLabel}`,
+    `${inLabel}${rotLabel}overlay=x=(W*${layer.x})-(overlay_w/2):y=(H*${layer.y})-(overlay_h/2):enable='${enable}'${outLabel}`,
+  ];
 };
 
 const sanitizeColor = (color: string): string | null => {

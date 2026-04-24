@@ -5,13 +5,22 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "au.com.bettips.mobile"
+      "bundleIdentifier": "au.com.bettips.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "au.com.bettips.mobile"
+      "package": "au.com.bettips.mobile",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       [
@@ -30,7 +39,11 @@
       ]
     ],
     "extra": {
-      "apiUrl": "https://example.execute-api.ap-southeast-2.amazonaws.com"
-    }
+      "apiUrl": "https://du5vbvind8.execute-api.ap-southeast-2.amazonaws.com",
+      "eas": {
+        "projectId": "849eb52f-7aa0-433a-ae2d-665e2aa845bc"
+      }
+    },
+    "owner": "theolijones"
   }
 }

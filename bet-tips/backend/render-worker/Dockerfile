@@ -13,17 +13,18 @@ RUN npx esbuild src/index.ts \
 
 FROM public.ecr.aws/lambda/nodejs:20
 
-# ffmpeg static binary (arm64). Using a pinned John Van Sickle release for
-# reproducibility. The Lambda arch is set to arm64 in CDK.
-ARG FFMPEG_URL=https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-arm64-static.tar.xz
+# ffmpeg static binary (arm64, GPL build with drawtext/libass/libfreetype).
+# BtbN's builds are the standard choice for ffmpeg-in-docker and include
+# all the text rendering filters we need.
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz
 
 RUN dnf -y update \
   && dnf -y install tar xz dejavu-sans-fonts \
   && dnf clean all \
   && curl -fsSL "$FFMPEG_URL" -o /tmp/ffmpeg.tar.xz \
   && tar -C /tmp -xf /tmp/ffmpeg.tar.xz \
-  && cp /tmp/ffmpeg-*-arm64-static/ffmpeg /usr/bin/ffmpeg \
-  && cp /tmp/ffmpeg-*-arm64-static/ffprobe /usr/bin/ffprobe \
+  && cp /tmp/ffmpeg-master-latest-linuxarm64-gpl/bin/ffmpeg /usr/bin/ffmpeg \
+  && cp /tmp/ffmpeg-master-latest-linuxarm64-gpl/bin/ffprobe /usr/bin/ffprobe \
   && chmod +x /usr/bin/ffmpeg /usr/bin/ffprobe \
   && rm -rf /tmp/ffmpeg*
 
