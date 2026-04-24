@@ -150,6 +150,10 @@ th {
 .badge.pending { background: #78350f; color: #fde68a; }
 .badge.approved { background: #14532d; color: #bbf7d0; }
 .badge.rejected { background: #7f1d1d; color: #fecaca; }
+.badge.render-queued { background: #1e3a8a; color: #bfdbfe; }
+.badge.render-rendering { background: #075985; color: #bae6fd; }
+.badge.render-done { background: #14532d; color: #bbf7d0; }
+.badge.render-failed { background: #7f1d1d; color: #fecaca; }
 
 .login-wrap {
   display: flex;

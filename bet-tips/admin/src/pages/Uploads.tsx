@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+
+type RenderStatus = "not_required" | "queued" | "rendering" | "done" | "failed";
 
 interface Upload {
   uploadId: string;
@@ -7,11 +9,22 @@ interface Upload {
   status: "pending" | "approved" | "rejected";
   videoKey: string;
   videoUrl?: string;
+  renderedVideoUrl?: string;
+  renderStatus?: RenderStatus;
+  renderError?: string;
   metadata?: Record<string, unknown>;
   reviewNote?: string;
   reviewedAt?: string;
   createdAt: string;
 }
+
+const renderLabel: Record<RenderStatus, string> = {
+  not_required: "No overlays",
+  queued: "Render queued",
+  rendering: "Rendering…",
+  done: "Rendered",
+  failed: "Render failed",
+};
 
 type Tab = "pending" | "approved" | "rejected";
 
@@ -37,6 +50,22 @@ const Uploads = () => {
   useEffect(() => {
     void load(tab);
   }, [tab]);
+
+  // Poll while any upload is still rendering, so the admin sees render
+  // completion without manually refreshing. Only active on pending tab.
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    if (tab !== "pending") return;
+    const anyActive = list.some(
+      (u) => u.renderStatus === "queued" || u.renderStatus === "rendering"
+    );
+    if (!anyActive) return;
+    pollRef.current = setInterval(() => void load(tab), 10000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [list, tab]);
 
   const review = async (uploadId: string, decision: "approved" | "rejected") => {
     let note: string | undefined;
@@ -89,15 +118,41 @@ const Uploads = () => {
                   User {u.userId} · {new Date(u.createdAt).toLocaleString()}
                 </div>
               </div>
-              <span className={`badge ${u.status}`}>{u.status}</span>
+              <div className="row" style={{ gap: 8 }}>
+                {u.renderStatus && u.renderStatus !== "not_required" && (
+                  <span className={`badge render-${u.renderStatus}`}>
+                    {renderLabel[u.renderStatus]}
+                  </span>
+                )}
+                <span className={`badge ${u.status}`}>{u.status}</span>
+              </div>
             </div>
 
-            {u.videoUrl && (
-              <video
-                src={u.videoUrl}
-                controls
-                style={{ maxWidth: 360, borderRadius: 6, marginBottom: 8, background: "#000" }}
-              />
+            {(() => {
+              const playbackUrl =
+                u.renderStatus === "done" && u.renderedVideoUrl
+                  ? u.renderedVideoUrl
+                  : u.videoUrl;
+              if (!playbackUrl) return null;
+              return (
+                <video
+                  src={playbackUrl}
+                  controls
+                  style={{ maxWidth: 360, borderRadius: 6, marginBottom: 8, background: "#000" }}
+                />
+              );
+            })()}
+
+            {u.renderStatus === "rendering" && (
+              <div className="muted" style={{ marginBottom: 8, fontSize: 13 }}>
+                Waiting for the server to finish rendering overlays…
+              </div>
+            )}
+
+            {u.renderStatus === "failed" && u.renderError && (
+              <div className="error" style={{ marginBottom: 8 }}>
+                <strong>Render failed:</strong> {u.renderError}
+              </div>
             )}
 
             {u.metadata && Object.keys(u.metadata).length > 0 && (
@@ -120,7 +175,17 @@ const Uploads = () => {
 
             {u.status === "pending" && (
               <div className="row">
-                <button onClick={() => review(u.uploadId, "approved")}>Approve</button>
+                <button
+                  onClick={() => review(u.uploadId, "approved")}
+                  disabled={u.renderStatus === "queued" || u.renderStatus === "rendering"}
+                  title={
+                    u.renderStatus === "queued" || u.renderStatus === "rendering"
+                      ? "Waiting for render to finish"
+                      : undefined
+                  }
+                >
+                  Approve
+                </button>
                 <button className="danger" onClick={() => review(u.uploadId, "rejected")}>
                   Reject
                 </button>
