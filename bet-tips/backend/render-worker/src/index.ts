@@ -37,7 +37,8 @@ export const handler = async (event: Event): Promise<void> => {
   if (!uploadId) throw new Error("uploadId required");
 
   const record = await loadRecord(uploadId);
-  if (!record.edl || record.edl.layers.length === 0) {
+  const edl = record.edl;
+  if (!edl || (edl.layers.length === 0 && !edl.background)) {
     await updateStatus(uploadId, "not_required");
     return;
   }
@@ -49,7 +50,25 @@ export const handler = async (event: Event): Promise<void> => {
     const inputPath = `${WORK}/input${extFromKey(record.videoKey)}`;
     await downloadToFile(record.videoKey, inputPath);
 
-    const imageLayers = record.edl.layers.filter((l): l is EdlImageLayer => l.type === "image");
+    // Person-cutout step: if the EDL declares a background, run MediaPipe
+    // segmentation + composite first; the result becomes the input for the
+    // existing text/image overlay chain.
+    let videoForOverlay = inputPath;
+    if (edl.background) {
+      const bgKey = edl.background.assetKey;
+      if (!bgKey) {
+        throw new Error("edl.background.assetKey is empty — submit pipeline did not fill it in");
+      }
+      const bgPath = `${WORK}/bg${extFromKey(bgKey) || ".png"}`;
+      await downloadToFile(bgKey, bgPath);
+      if (edl.background.mode === "segment") {
+        const segmentedPath = `${WORK}/segmented.mp4`;
+        await runSegmentation(inputPath, bgPath, segmentedPath);
+        videoForOverlay = segmentedPath;
+      }
+    }
+
+    const imageLayers = edl.layers.filter((l): l is EdlImageLayer => l.type === "image");
     const imagePaths = new Map<string, string>();
     for (const layer of imageLayers) {
       const path = `${WORK}/${layer.id}${extFromKey(layer.assetKey)}`;
@@ -58,8 +77,15 @@ export const handler = async (event: Event): Promise<void> => {
     }
 
     const outputPath = `${WORK}/output.mp4`;
-    const args = buildFfmpegArgs(inputPath, record.edl, imagePaths, outputPath);
-    await runFfmpeg(args);
+    // When there are no overlay layers, skip the second ffmpeg pass and just
+    // promote the segmented (or original) video directly. Saves a re-encode.
+    if (edl.layers.length === 0) {
+      const fs = await import("node:fs/promises");
+      await fs.copyFile(videoForOverlay, outputPath);
+    } else {
+      const args = buildFfmpegArgs(videoForOverlay, edl, imagePaths, outputPath);
+      await runFfmpeg(args);
+    }
 
     const renderedKey = `renders/${record.userId}/${record.uploadId}/output.mp4`;
     const size = (await stat(outputPath)).size;
@@ -347,5 +373,35 @@ const runFfmpeg = (args: string[]): Promise<void> =>
     child.on("close", (code) => {
       if (code === 0) resolve();
       else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-800)}`));
+    });
+  });
+
+const runSegmentation = (
+  inputPath: string,
+  bgPath: string,
+  outputPath: string
+): Promise<void> =>
+  new Promise((resolve, reject) => {
+    console.log("segment.py", inputPath, "+", bgPath, "->", outputPath);
+    const scriptPath = `${process.env.LAMBDA_TASK_ROOT ?? "/var/task"}/segment.py`;
+    // Strip LD_LIBRARY_PATH so Python doesn't pick up the Node-bundled
+    // libcrypto from /var/lang/lib (causes _hashlib import failures).
+    const childEnv: NodeJS.ProcessEnv = { ...process.env };
+    delete childEnv.LD_LIBRARY_PATH;
+    const child = spawn(
+      "python3",
+      [scriptPath, "--input", inputPath, "--bg", bgPath, "--output", outputPath, "--ffmpeg", FFMPEG],
+      { stdio: ["ignore", "pipe", "pipe"], env: childEnv }
+    );
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => process.stdout.write(chunk));
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+      process.stderr.write(chunk);
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`segment.py exited ${code}: ${stderr.slice(-800)}`));
     });
   });

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
+  FlatList,
   Image,
   LayoutChangeEvent,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -11,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
+import { listLibraryAssets, type LibraryAsset } from "../api/library";
 import {
   Gesture,
   GestureDetector,
@@ -61,6 +65,10 @@ interface EditorImageLayer extends EditorLayerCommon {
   contentType: ImageAssetContentType;
   widthRatio: number;
   aspect: number;
+  /** Set when the layer comes from the admin-managed library; the renderer
+   *  reads the asset directly from this S3 key instead of via the per-upload
+   *  asset upload flow. */
+  libraryAssetKey?: string;
 }
 
 type EditorLayer = EditorTextLayer | EditorImageLayer;
@@ -87,16 +95,28 @@ const contentTypeFromMime = (mime?: string): ImageAssetContentType => {
   return "image/jpeg";
 };
 
+const libraryContentType = (mime: string): ImageAssetContentType => {
+  if (mime === "image/png" || mime === "image/gif") return "image/png";
+  if (mime === "image/webp") return "image/webp";
+  return "image/jpeg";
+};
+
 const EditorScreen = () => {
   const nav = useNavigation<Nav>();
   const route = useRoute<EditorRoute>();
-  const { videoUri, videoContentType } = route.params;
+  const { videoUri, videoContentType, background } = route.params;
   const video = useRef<Video | null>(null);
   const inputRef = useRef<TextInput | null>(null);
   const [layers, setLayers] = useState<EditorLayer[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const [durationMs, setDurationMs] = useState<number>(0);
+  const [stickerSheet, setStickerSheet] = useState<{
+    open: boolean;
+    loading: boolean;
+    error: string | null;
+    assets: LibraryAsset[];
+  }>({ open: false, loading: false, error: null, assets: [] });
 
   const selected = layers.find((l) => l.id === selectedId) ?? null;
 
@@ -155,6 +175,46 @@ const EditorScreen = () => {
     setSelectedId(id);
   };
 
+  const openStickerSheet = async () => {
+    setStickerSheet({ open: true, loading: true, error: null, assets: [] });
+    try {
+      const res = await listLibraryAssets();
+      // Backgrounds are picked from the camera screen, not from this sheet.
+      const overlayAssets = res.assets.filter((a) => a.kind !== "background");
+      setStickerSheet({ open: true, loading: false, error: null, assets: overlayAssets });
+    } catch (e) {
+      setStickerSheet({
+        open: true,
+        loading: false,
+        error: (e as Error).message,
+        assets: [],
+      });
+    }
+  };
+
+  const closeStickerSheet = () =>
+    setStickerSheet((s) => ({ ...s, open: false }));
+
+  const pickLibraryAsset = (asset: LibraryAsset) => {
+    const id = `image-${Date.now()}`;
+    const layer: EditorImageLayer = {
+      id,
+      type: "image",
+      localUri: asset.downloadUrl,
+      contentType: libraryContentType(asset.contentType),
+      x: 0.5,
+      y: 0.5,
+      scale: 1,
+      rotation: 0,
+      widthRatio: 0.4,
+      aspect: 1,
+      libraryAssetKey: asset.s3Key,
+    };
+    setLayers((ls) => [...ls, layer]);
+    setSelectedId(id);
+    closeStickerSheet();
+  };
+
   const deleteSelected = () => {
     if (!selectedId) return;
     setLayers((ls) => ls.filter((l) => l.id !== selectedId));
@@ -174,8 +234,10 @@ const EditorScreen = () => {
 
   const onNext = () => {
     const end = Math.max(durationMs, 1000);
+    // Only device-picked layers need an upload; library layers reference an
+    // existing S3 key directly in the EDL.
     const assetRefs: AssetRef[] = layers
-      .filter((l): l is EditorImageLayer => l.type === "image")
+      .filter((l): l is EditorImageLayer => l.type === "image" && !l.libraryAssetKey)
       .map((l) => ({ layerId: l.id, localUri: l.localUri, contentType: l.contentType }));
 
     const toDeg = (rad: number) => (rad * 180) / Math.PI;
@@ -206,7 +268,7 @@ const EditorScreen = () => {
       const img: EdlImageLayer = {
         ...base,
         type: "image",
-        assetKey: "",
+        assetKey: l.libraryAssetKey ?? "",
         widthRatio: l.widthRatio,
       };
       return img;
@@ -217,14 +279,31 @@ const EditorScreen = () => {
       height: CANVAS_H,
       durationMs: end,
       layers: edlLayers,
+      background: background
+        ? { assetKey: background.assetKey, mode: "segment" }
+        : undefined,
     };
 
-    nav.navigate("Metadata", { videoUri, videoContentType, edl, assetRefs });
+    nav.navigate("Metadata", {
+      videoUri,
+      videoContentType,
+      edl,
+      assetRefs,
+      background,
+    });
   };
 
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaView style={styles.safe}>
+        {background && (
+          <View style={styles.bgBanner}>
+            <Image source={{ uri: background.previewUri }} style={styles.bgBannerImg} />
+            <Text style={styles.bgBannerText} numberOfLines={1}>
+              Cutout BG: {background.title}
+            </Text>
+          </View>
+        )}
         <View style={styles.canvas} onLayout={onCanvasLayout}>
           <Video
             ref={video}
@@ -288,6 +367,9 @@ const EditorScreen = () => {
           <Pressable style={[styles.toolBtn, styles.primaryBtn]} onPress={addText}>
             <Text style={styles.primaryText}>+ Text</Text>
           </Pressable>
+          <Pressable style={[styles.toolBtn, styles.primaryBtn]} onPress={() => void openStickerSheet()}>
+            <Text style={styles.primaryText}>+ Sticker</Text>
+          </Pressable>
           <Pressable style={[styles.toolBtn, styles.primaryBtn]} onPress={() => void addImage()}>
             <Text style={styles.primaryText}>+ Image</Text>
           </Pressable>
@@ -295,10 +377,75 @@ const EditorScreen = () => {
             <Text style={styles.primaryText}>Next</Text>
           </Pressable>
         </View>
+
+        <StickerSheet
+          state={stickerSheet}
+          onPick={pickLibraryAsset}
+          onClose={closeStickerSheet}
+        />
       </SafeAreaView>
     </GestureHandlerRootView>
   );
 };
+
+interface StickerSheetProps {
+  state: {
+    open: boolean;
+    loading: boolean;
+    error: string | null;
+    assets: LibraryAsset[];
+  };
+  onPick: (asset: LibraryAsset) => void;
+  onClose: () => void;
+}
+
+const StickerSheet = ({ state, onPick, onClose }: StickerSheetProps) => (
+  <Modal
+    visible={state.open}
+    animationType="slide"
+    presentationStyle="pageSheet"
+    onRequestClose={onClose}
+  >
+    <SafeAreaView style={styles.sheetSafe} edges={["top"]}>
+      <View style={styles.sheetHeader}>
+        <Text style={styles.sheetTitle}>Pick a sticker</Text>
+        <Pressable onPress={onClose} style={styles.sheetClose}>
+          <Text style={styles.sheetCloseText}>Close</Text>
+        </Pressable>
+      </View>
+      {state.loading ? (
+        <View style={styles.sheetCenter}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+        </View>
+      ) : state.error ? (
+        <View style={styles.sheetCenter}>
+          <Text style={styles.sheetError}>{state.error}</Text>
+        </View>
+      ) : state.assets.length === 0 ? (
+        <View style={styles.sheetCenter}>
+          <Text style={styles.sheetEmpty}>
+            No stickers yet. Ask an admin to add some via the admin panel.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={state.assets}
+          keyExtractor={(item) => item.assetId}
+          numColumns={3}
+          contentContainerStyle={styles.sheetList}
+          renderItem={({ item }) => (
+            <Pressable style={styles.stickerTile} onPress={() => onPick(item)}>
+              <Image source={{ uri: item.downloadUrl }} style={styles.stickerImg} resizeMode="contain" />
+              <Text style={styles.stickerLabel} numberOfLines={1}>
+                {item.title}
+              </Text>
+            </Pressable>
+          )}
+        />
+      )}
+    </SafeAreaView>
+  </Modal>
+);
 
 interface LayerViewProps {
   layer: EditorLayer;
@@ -529,6 +676,57 @@ const styles = StyleSheet.create({
   toolBtnText: { color: "#e2e8f0", fontSize: 15, fontWeight: "500" },
   primaryBtn: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
   primaryText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  bgBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "#1e293b",
+    borderBottomColor: "#334155",
+    borderBottomWidth: 1,
+  },
+  bgBannerImg: {
+    width: 36,
+    height: 36,
+    borderRadius: 6,
+    backgroundColor: "#0f172a",
+  },
+  bgBannerText: { color: "#cbd5e1", fontSize: 13, flex: 1 },
+  sheetSafe: { flex: 1, backgroundColor: "#0f172a" },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomColor: "#1e293b",
+    borderBottomWidth: 1,
+  },
+  sheetTitle: { color: "#e2e8f0", fontSize: 18, fontWeight: "600" },
+  sheetClose: { paddingVertical: 6, paddingHorizontal: 10 },
+  sheetCloseText: { color: "#3b82f6", fontSize: 15, fontWeight: "500" },
+  sheetCenter: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  sheetError: { color: "#fca5a5", fontSize: 14, textAlign: "center" },
+  sheetEmpty: { color: "#94a3b8", fontSize: 14, textAlign: "center" },
+  sheetList: { padding: 8 },
+  stickerTile: {
+    flex: 1 / 3,
+    aspectRatio: 1,
+    margin: 6,
+    backgroundColor: "#1e293b",
+    borderRadius: 8,
+    padding: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stickerImg: { width: "100%", height: "70%" },
+  stickerLabel: {
+    color: "#e2e8f0",
+    fontSize: 11,
+    marginTop: 6,
+    textAlign: "center",
+  },
 });
 
 export default EditorScreen;

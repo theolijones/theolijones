@@ -9,7 +9,7 @@ import {
   type UploadRecord,
   type UserRole,
 } from "./shared/db";
-import { edlHasLayers, isValidEdl, type EdlBase } from "./shared/edl";
+import { edlNeedsRender, isValidEdl, type EdlBase } from "./shared/edl";
 import { principalFrom } from "./shared/context";
 import { bad, forbidden, notFound, ok, parseJson, unauthorized } from "./shared/http";
 
@@ -60,7 +60,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
   }
 
   const edl = body.edl;
-  const willRender = edlHasLayers(edl);
+  const willRender = edlNeedsRender(edl);
 
   let sizeBytes: number | undefined;
   try {

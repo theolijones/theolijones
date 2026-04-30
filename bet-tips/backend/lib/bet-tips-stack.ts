@@ -62,6 +62,17 @@ export class BetTipsStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
+    const libraryTable = new dynamodb.Table(this, "LibraryAssetsTable", {
+      partitionKey: { name: "assetId", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    libraryTable.addGlobalSecondaryIndex({
+      indexName: "byActive",
+      partitionKey: { name: "active", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "createdAt", type: dynamodb.AttributeType.STRING },
+    });
+
     const mediaBucket = new s3.Bucket(this, "MediaBucket", {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
@@ -90,6 +101,7 @@ export class BetTipsStack extends cdk.Stack {
       TOKENS_TABLE: tokensTable.tableName,
       UPLOADS_TABLE: uploadsTable.tableName,
       SCHEMA_TABLE: schemaTable.tableName,
+      LIBRARY_TABLE: libraryTable.tableName,
       MEDIA_BUCKET: mediaBucket.bucketName,
       JWT_SECRET_ARN: jwtSecret.secretArn,
       NODE_OPTIONS: "--enable-source-maps",
@@ -165,6 +177,7 @@ export class BetTipsStack extends cdk.Stack {
       }),
       architecture: lambda.Architecture.ARM_64,
       memorySize: 3008,
+      ephemeralStorageSize: cdk.Size.mebibytes(2048),
       timeout: cdk.Duration.minutes(10),
       environment: {
         UPLOADS_TABLE: uploadsTable.tableName,
@@ -189,6 +202,21 @@ export class BetTipsStack extends cdk.Stack {
 
     const schemaUpdateFn = fn("SchemaUpdateFn", "schema-update.ts");
     schemaTable.grantReadWriteData(schemaUpdateFn);
+
+    const libraryListFn = fn("LibraryListFn", "library-list.ts");
+    libraryTable.grantReadData(libraryListFn);
+    mediaBucket.grantRead(libraryListFn);
+
+    const libraryCreateFn = fn("LibraryCreateFn", "library-create.ts");
+    libraryTable.grantReadWriteData(libraryCreateFn);
+    mediaBucket.grantPut(libraryCreateFn);
+
+    const libraryUpdateFn = fn("LibraryUpdateFn", "library-update.ts");
+    libraryTable.grantReadWriteData(libraryUpdateFn);
+
+    const libraryDeleteFn = fn("LibraryDeleteFn", "library-delete.ts");
+    libraryTable.grantReadWriteData(libraryDeleteFn);
+    mediaBucket.grantDelete(libraryDeleteFn);
 
     const api = new apigw.HttpApi(this, "Api", {
       corsPreflight: {
@@ -234,6 +262,10 @@ export class BetTipsStack extends cdk.Stack {
     protectedRoute("/admin/uploads/{uploadId}", apigw.HttpMethod.PATCH, uploadsReviewFn);
     protectedRoute("/admin/schema", apigw.HttpMethod.GET, schemaGetFn);
     protectedRoute("/admin/schema", apigw.HttpMethod.PUT, schemaUpdateFn);
+    protectedRoute("/library/assets", apigw.HttpMethod.GET, libraryListFn);
+    protectedRoute("/admin/library/assets", apigw.HttpMethod.POST, libraryCreateFn);
+    protectedRoute("/admin/library/assets/{assetId}", apigw.HttpMethod.PATCH, libraryUpdateFn);
+    protectedRoute("/admin/library/assets/{assetId}", apigw.HttpMethod.DELETE, libraryDeleteFn);
 
     new cdk.CfnOutput(this, "ApiUrl", { value: api.apiEndpoint });
     new cdk.CfnOutput(this, "MediaBucketName", { value: mediaBucket.bucketName });

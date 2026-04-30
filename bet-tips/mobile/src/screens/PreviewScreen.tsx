@@ -12,7 +12,7 @@ type PreviewRoute = RouteProp<RootStackParamList, "Preview">;
 const PreviewScreen = () => {
   const nav = useNavigation<Nav>();
   const route = useRoute<PreviewRoute>();
-  const { videoUri, videoContentType } = route.params;
+  const { videoUri, videoContentType, background } = route.params;
   const video = useRef<Video | null>(null);
 
   return (
@@ -38,7 +38,7 @@ const PreviewScreen = () => {
         </Pressable>
         <Pressable
           style={[styles.btn, styles.primaryBtn]}
-          onPress={() => nav.navigate("Editor", { videoUri, videoContentType })}
+          onPress={() => nav.navigate("Editor", { videoUri, videoContentType, background })}
         >
           <Text style={styles.primaryText}>Next</Text>
         </Pressable>

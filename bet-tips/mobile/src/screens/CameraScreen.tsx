@@ -1,16 +1,35 @@
-import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, ActivityIndicator } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
-  CameraView,
-  useCameraPermissions,
-  useMicrophonePermissions,
-  type CameraType,
-} from "expo-camera";
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+  useMicrophonePermission,
+  useSkiaFrameProcessor,
+  VisionCameraProxy,
+} from "react-native-vision-camera";
+import { Skia } from "@shopify/react-native-skia";
+import * as ImagePicker from "expo-image-picker";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "../navigation/types";
-import type { VideoContentType } from "../api/uploads";
+import type { BackgroundChoice, RootStackParamList } from "../navigation/types";
+import type { ImageAssetContentType, VideoContentType } from "../api/uploads";
+import { listLibraryAssets, type LibraryAsset } from "../api/library";
+
+// Native iOS plugin that runs Apple Vision's VNGeneratePersonSegmentationRequest
+// + Core Image composite each frame, returning a pointer to a CVPixelBuffer.
+// See `mobile/plugins/person-cutout/PersonCutoutPlugin.m`.
+const segPlugin = VisionCameraProxy.initFrameProcessorPlugin("runPersonCutout", {});
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Camera">;
 
@@ -29,16 +48,84 @@ const fmt = (s: number): string => {
   return `${m}:${r.toString().padStart(2, "0")}`;
 };
 
+const bgContentTypeFromMime = (mime?: string): ImageAssetContentType => {
+  if (mime === "image/png") return "image/png";
+  if (mime === "image/webp") return "image/webp";
+  return "image/jpeg";
+};
+
+
 const CameraScreen = () => {
   const nav = useNavigation<Nav>();
-  const [camPerm, requestCam] = useCameraPermissions();
-  const [micPerm, requestMic] = useMicrophonePermissions();
-  const [facing, setFacing] = useState<CameraType>("back");
+  const { hasPermission: camPerm, requestPermission: requestCam } = useCameraPermission();
+  const { hasPermission: micPerm, requestPermission: requestMic } = useMicrophonePermission();
+  const [facing, setFacing] = useState<"front" | "back">("back");
+  const device = useCameraDevice(facing);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [ready, setReady] = useState(false);
-  const camera = useRef<CameraView | null>(null);
+  const [background, setBackground] = useState<BackgroundChoice | null>(null);
+  const [bgSheet, setBgSheet] = useState<{
+    open: boolean;
+    loading: boolean;
+    error: string | null;
+    assets: LibraryAsset[];
+  }>({ open: false, loading: false, error: null, assets: [] });
+
+  const camera = useRef<Camera | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Live person-cutout preview pipeline. Native iOS plugin runs Vision
+  // segmentation AND the camera/BG composite in Core Image, returning a
+  // pointer to a CVPixelBuffer. JS wraps it in a Skia image and draws it
+  // once. No per-frame Skia.Image.MakeImage, no saveLayer — that pattern
+  // caused iOS jetsam at ~14 sec from GPU texture pool growth.
+  const bgUri = background?.previewUri ?? null;
+  const cutoutPaint = useMemo(() => Skia.Paint(), []);
+
+  const frameProcessor = useSkiaFrameProcessor(
+    (frame) => {
+      "worklet";
+      if (!bgUri || !segPlugin) {
+        frame.render();
+        return;
+      }
+      // Wrap the whole composite path in try/catch — MakeImageFromNativeBuffer
+      // THROWS on failure (does not return null). Without this, an unhandled
+      // throw leaves the offscreen Skia surface blank and the preview shows
+      // black instead of falling back to the raw camera.
+      let img: ReturnType<typeof Skia.Image.MakeImageFromNativeBuffer> | null = null;
+      try {
+        const result = segPlugin.call(frame, { bgUri }) as unknown as
+          | { buffer: string; width: number; height: number }
+          | null;
+        if (!result || !result.buffer) {
+          frame.render();
+          return;
+        }
+        // Skia's MakeImageFromNativeBuffer extracts the pointer via
+        // jsi::asUint64, which requires a BigInt. VisionCamera marshals
+        // NSNumber → jsi::Number (double) which is rejected, so the
+        // native side returns the pointer as a string and we convert here.
+        img = Skia.Image.MakeImageFromNativeBuffer(BigInt(result.buffer) as unknown as number);
+        if (!img) {
+          frame.render();
+          return;
+        }
+        frame.drawImageRect(
+          img,
+          { x: 0, y: 0, width: result.width, height: result.height },
+          { x: 0, y: 0, width: frame.width, height: frame.height },
+          cutoutPaint
+        );
+      } catch (e) {
+        console.log("[cutout] frame failed:", String(e));
+        frame.render();
+      } finally {
+        if (img) img.dispose();
+      }
+    },
+    [bgUri, cutoutPaint]
+  );
 
   useEffect(() => {
     return () => {
@@ -51,7 +138,7 @@ const CameraScreen = () => {
     await requestMic();
   };
 
-  if (!camPerm || !micPerm) {
+  if (camPerm === undefined || micPerm === undefined) {
     return (
       <SafeAreaView style={styles.safe}>
         <ActivityIndicator color="#e2e8f0" />
@@ -59,7 +146,7 @@ const CameraScreen = () => {
     );
   }
 
-  if (!camPerm.granted || !micPerm.granted) {
+  if (!camPerm || !micPerm) {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
@@ -67,10 +154,18 @@ const CameraScreen = () => {
           <Text style={styles.permBody}>
             Bet Tips needs access to your camera and microphone to record your betting tip videos.
           </Text>
-          <Pressable style={styles.primaryBtn} onPress={requestAll}>
+          <Pressable style={styles.primaryBtn} onPress={() => void requestAll()}>
             <Text style={styles.primaryBtnText}>Grant access</Text>
           </Pressable>
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!device) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <Text style={styles.permBody}>No {facing} camera available on this device.</Text>
       </SafeAreaView>
     );
   }
@@ -80,7 +175,9 @@ const CameraScreen = () => {
     timer.current = setInterval(() => {
       setElapsed((s) => {
         const next = s + 1;
-        if (next >= MAX_SECONDS) void stopRecording();
+        if (next >= MAX_SECONDS) {
+          stopRecording();
+        }
         return next;
       });
     }, 1000);
@@ -91,41 +188,96 @@ const CameraScreen = () => {
     timer.current = null;
   };
 
-  const startRecording = async () => {
+  const finishRecording = (uri: string) => {
+    nav.navigate("Preview", {
+      videoUri: uri,
+      videoContentType: contentTypeFor(uri),
+      background: background ?? undefined,
+    });
+  };
+
+  const startRecording = () => {
     if (!camera.current || recording) return;
     setRecording(true);
     startTimer();
-    try {
-      const result = await camera.current.recordAsync({ maxDuration: MAX_SECONDS });
-      if (result?.uri) {
-        nav.navigate("Preview", {
-          videoUri: result.uri,
-          videoContentType: contentTypeFor(result.uri),
-        });
-      }
-    } catch (e) {
-      console.warn("recordAsync failed", e);
-    } finally {
-      setRecording(false);
-      stopTimer();
-    }
+    camera.current.startRecording({
+      onRecordingFinished: (video) => {
+        setRecording(false);
+        stopTimer();
+        const uri = video.path.startsWith("file://") ? video.path : `file://${video.path}`;
+        finishRecording(uri);
+      },
+      onRecordingError: (e) => {
+        console.warn("recording error", e);
+        setRecording(false);
+        stopTimer();
+      },
+    });
   };
 
-  const stopRecording = async () => {
+  const stopRecording = () => {
     if (!camera.current || !recording) return;
-    camera.current.stopRecording();
+    camera.current.stopRecording().catch((e) => console.warn("stopRecording", e));
   };
 
   const toggleFacing = () => setFacing((f) => (f === "back" ? "front" : "back"));
 
+  const openBgSheet = async () => {
+    setBgSheet({ open: true, loading: true, error: null, assets: [] });
+    try {
+      const res = await listLibraryAssets();
+      const bgs = res.assets.filter((a) => a.kind === "background");
+      setBgSheet({ open: true, loading: false, error: null, assets: bgs });
+    } catch (e) {
+      setBgSheet({ open: true, loading: false, error: (e as Error).message, assets: [] });
+    }
+  };
+
+  const closeBgSheet = () => setBgSheet((s) => ({ ...s, open: false }));
+
+  const pickBackground = (asset: LibraryAsset | null) => {
+    if (asset) {
+      setBackground({ assetKey: asset.s3Key, previewUri: asset.downloadUrl, title: asset.title });
+    } else {
+      setBackground(null);
+    }
+    closeBgSheet();
+  };
+
+  const pickBackgroundFromRoll = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      quality: 0.9,
+    });
+    if (res.canceled || res.assets.length === 0) return;
+    const asset = res.assets[0];
+    const fileName = asset.fileName ?? "Camera roll image";
+    setBackground({
+      assetKey: "",
+      previewUri: asset.uri,
+      localUri: asset.uri,
+      contentType: bgContentTypeFromMime(asset.mimeType ?? undefined),
+      title: fileName,
+    });
+    closeBgSheet();
+  };
+
   return (
     <View style={styles.root}>
-      <CameraView
+      <Camera
         ref={camera}
         style={StyleSheet.absoluteFill}
-        facing={facing}
-        mode="video"
-        onCameraReady={() => setReady(true)}
+        device={device}
+        isActive={true}
+        video={true}
+        audio={true}
+        frameProcessor={background ? frameProcessor : undefined}
+        pixelFormat="rgb"
+        videoHdr={false}
+        enableBufferCompression={false}
       />
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.topRow}>
@@ -145,10 +297,29 @@ const CameraScreen = () => {
           </Pressable>
         </View>
 
-        <View style={styles.bottomRow}>
+        <View style={styles.bottomCol}>
+          {background && (
+            <View style={styles.bgChip}>
+              <Image source={{ uri: background.previewUri }} style={styles.bgChipImg} />
+              <Text style={styles.bgChipText} numberOfLines={1}>
+                BG: {background.title}
+              </Text>
+              <Pressable hitSlop={8} onPress={() => setBackground(null)}>
+                <Text style={styles.bgChipRemove}>×</Text>
+              </Pressable>
+            </View>
+          )}
+          <Pressable
+            onPress={() => void openBgSheet()}
+            disabled={recording}
+            style={[styles.bgPill, recording && styles.disabled]}
+          >
+            <Text style={styles.bgPillText}>
+              {background ? "Change background" : "+ Background"}
+            </Text>
+          </Pressable>
           <Pressable
             onPress={recording ? stopRecording : startRecording}
-            disabled={!ready}
             style={({ pressed }) => [
               styles.shutter,
               recording && styles.shutterRecording,
@@ -159,9 +330,98 @@ const CameraScreen = () => {
           </Pressable>
         </View>
       </SafeAreaView>
+
+      <BackgroundSheet
+        state={bgSheet}
+        onPick={pickBackground}
+        onPickFromRoll={() => void pickBackgroundFromRoll()}
+        onClose={closeBgSheet}
+        current={background}
+      />
     </View>
   );
 };
+
+interface SheetProps {
+  state: {
+    open: boolean;
+    loading: boolean;
+    error: string | null;
+    assets: LibraryAsset[];
+  };
+  current: BackgroundChoice | null;
+  onPick: (asset: LibraryAsset | null) => void;
+  onPickFromRoll: () => void;
+  onClose: () => void;
+}
+
+const BackgroundSheet = ({ state, current, onPick, onPickFromRoll, onClose }: SheetProps) => (
+  <Modal
+    visible={state.open}
+    animationType="slide"
+    presentationStyle="pageSheet"
+    onRequestClose={onClose}
+  >
+    <SafeAreaView style={styles.sheetSafe} edges={["top"]}>
+      <View style={styles.sheetHeader}>
+        <Text style={styles.sheetTitle}>Pick a background</Text>
+        <Pressable onPress={onClose} style={styles.sheetClose}>
+          <Text style={styles.sheetCloseText}>Close</Text>
+        </Pressable>
+      </View>
+      <View style={styles.sheetTopActions}>
+        <Pressable style={styles.rollBtn} onPress={onPickFromRoll}>
+          <Text style={styles.rollBtnText}>📷  Choose from camera roll</Text>
+        </Pressable>
+        {current && (
+          <Pressable style={styles.clearBtn} onPress={() => onPick(null)}>
+            <Text style={styles.clearBtnText}>Remove background</Text>
+          </Pressable>
+        )}
+      </View>
+      {state.loading ? (
+        <View style={styles.sheetCenter}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+        </View>
+      ) : state.error ? (
+        <View style={styles.sheetCenter}>
+          <Text style={styles.sheetError}>{state.error}</Text>
+        </View>
+      ) : state.assets.length === 0 ? (
+        <View style={styles.sheetCenter}>
+          <Text style={styles.sheetEmpty}>
+            No built-in backgrounds yet — pick one from your camera roll above,
+            or ask an admin to upload some via the admin panel.
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={state.assets}
+          keyExtractor={(item) => item.assetId}
+          numColumns={2}
+          contentContainerStyle={styles.sheetList}
+          ListHeaderComponent={
+            <Text style={styles.sheetSection}>From the library</Text>
+          }
+          renderItem={({ item }) => {
+            const selected = current?.assetKey === item.s3Key;
+            return (
+              <Pressable
+                style={[styles.bgTile, selected && styles.bgTileSelected]}
+                onPress={() => onPick(item)}
+              >
+                <Image source={{ uri: item.downloadUrl }} style={styles.bgImg} resizeMode="cover" />
+                <Text style={styles.bgLabel} numberOfLines={1}>
+                  {item.title}
+                </Text>
+              </Pressable>
+            );
+          }}
+        />
+      )}
+    </SafeAreaView>
+  </Modal>
+);
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
@@ -173,7 +433,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginTop: 8,
   },
-  bottomRow: { alignItems: "center", marginBottom: 24 },
+  bottomCol: { alignItems: "center", marginBottom: 24, gap: 12 },
   link: { color: "#f8fafc", fontSize: 16, fontWeight: "500" },
   disabled: { opacity: 0.4 },
   hint: { color: "#cbd5e1", fontSize: 13 },
@@ -193,6 +453,31 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   recordText: { color: "#f8fafc", fontVariant: ["tabular-nums"], fontSize: 13 },
+  bgPill: {
+    backgroundColor: "rgba(0,0,0,0.55)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  bgPillText: { color: "#f8fafc", fontSize: 13, fontWeight: "500" },
+  bgChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    maxWidth: "85%",
+  },
+  bgChipImg: { width: 28, height: 28, borderRadius: 4 },
+  bgChipText: { color: "#f8fafc", fontSize: 12, flexShrink: 1 },
+  bgChipRemove: {
+    color: "#f8fafc",
+    fontSize: 22,
+    paddingHorizontal: 6,
+    fontWeight: "300",
+  },
   shutter: {
     width: 78,
     height: 78,
@@ -233,6 +518,74 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   primaryBtnText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  sheetSafe: { flex: 1, backgroundColor: "#0f172a" },
+  sheetHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomColor: "#1e293b",
+    borderBottomWidth: 1,
+  },
+  sheetTitle: { color: "#e2e8f0", fontSize: 18, fontWeight: "600" },
+  sheetClose: { paddingVertical: 6, paddingHorizontal: 10 },
+  sheetCloseText: { color: "#3b82f6", fontSize: 15, fontWeight: "500" },
+  sheetCenter: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24 },
+  sheetError: { color: "#fca5a5", fontSize: 14, textAlign: "center" },
+  sheetEmpty: { color: "#94a3b8", fontSize: 14, textAlign: "center" },
+  sheetList: { padding: 8 },
+  sheetTopActions: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+    gap: 8,
+  },
+  sheetSection: {
+    color: "#94a3b8",
+    fontSize: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    paddingHorizontal: 8,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  rollBtn: {
+    backgroundColor: "#3b82f6",
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  rollBtnText: { color: "#fff", fontSize: 15, fontWeight: "600" },
+  clearBtn: {
+    backgroundColor: "#7f1d1d",
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  clearBtnText: { color: "#fecaca", fontSize: 14, fontWeight: "500" },
+  bgTile: {
+    flex: 1 / 2,
+    aspectRatio: 9 / 16,
+    margin: 6,
+    backgroundColor: "#1e293b",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  bgTileSelected: { borderWidth: 2, borderColor: "#3b82f6" },
+  bgImg: { width: "100%", height: "100%" },
+  bgLabel: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    color: "#e2e8f0",
+    fontSize: 12,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    textAlign: "center",
+  },
 });
 
 export default CameraScreen;

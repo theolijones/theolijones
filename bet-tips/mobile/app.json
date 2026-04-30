@@ -24,19 +24,30 @@
     },
     "plugins": [
       [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow Bet Tips to use the camera to record your betting tip videos.",
-          "microphonePermission": "Allow Bet Tips to use the microphone so your videos have sound.",
-          "recordAudioAndroid": true
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "Allow Bet Tips to access your photos so you can add stickers and logos to your videos."
         }
-      ]
+      ],
+      [
+        "react-native-vision-camera",
+        {
+          "cameraPermissionText": "Allow Bet Tips to use the camera to record your betting tip videos.",
+          "enableMicrophonePermission": true,
+          "microphonePermission": "Allow Bet Tips to use the microphone so your videos have sound.",
+          "enableFrameProcessors": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "newArchEnabled": true,
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      "./plugins/with-person-cutout"
     ],
     "extra": {
       "apiUrl": "https://du5vbvind8.execute-api.ap-southeast-2.amazonaws.com",

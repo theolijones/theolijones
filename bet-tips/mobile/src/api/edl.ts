@@ -1,8 +1,20 @@
+export interface EdlBackground {
+  /** S3 key of the background image (typically a `library/...` path). */
+  assetKey: string;
+  /** "segment" = render-worker masks the person and composites over this background.
+   *  "static" = composite the BG behind the unmasked frame (decorative only).
+   */
+  mode: "segment" | "static";
+}
+
 export interface EdlBase {
   width: number;
   height: number;
   durationMs: number;
   layers: EdlLayer[];
+  /** Optional chroma-key background processed by the render-worker before
+   *  text/image overlays are composited on top. */
+  background?: EdlBackground;
 }
 
 export type EdlLayer = EdlTextLayer | EdlImageLayer;

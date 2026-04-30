@@ -11,6 +11,7 @@ export const tables = {
   tokens: process.env.TOKENS_TABLE!,
   uploads: process.env.UPLOADS_TABLE!,
   schema: process.env.SCHEMA_TABLE!,
+  library: process.env.LIBRARY_TABLE!,
 };
 
 export const buckets = {
@@ -88,4 +89,18 @@ export interface MetadataSchemaRecord {
   fields: MetadataSchemaField[];
   updatedAt: string;
   updatedBy: string;
+}
+
+export type LibraryAssetKind = "sticker" | "image" | "gif" | "background";
+
+export interface LibraryAssetRecord {
+  assetId: string;
+  kind: LibraryAssetKind;
+  title: string;
+  s3Key: string;
+  contentType: string;
+  active: "true" | "false";
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string;
 }

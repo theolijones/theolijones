@@ -11,6 +11,7 @@ const Layout = ({ children }: { children: ReactNode }) => {
         <NavLink to="/tokens" className={({ isActive }) => (isActive ? "active" : "")}>Signup Tokens</NavLink>
         <NavLink to="/uploads" className={({ isActive }) => (isActive ? "active" : "")}>Uploads</NavLink>
         <NavLink to="/schema" className={({ isActive }) => (isActive ? "active" : "")}>Metadata Schema</NavLink>
+        <NavLink to="/assets" className={({ isActive }) => (isActive ? "active" : "")}>Asset Library</NavLink>
         <div className="spacer" />
         <div className="muted" style={{ fontSize: 12, padding: "8px 12px" }}>{me?.email}</div>
         <button className="secondary" onClick={logout}>Log out</button>

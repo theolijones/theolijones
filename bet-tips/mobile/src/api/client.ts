@@ -56,7 +56,9 @@ export const api = async <T>(path: string, opts: RequestOpts = {}): Promise<T> =
   const useAuth = opts.auth !== false;
   const access = await storage.getAccess();
   let res = await doFetch(path, { ...opts, auth: useAuth }, access);
-  if (res.status === 401 && useAuth && (await refresh())) {
+  // The API Gateway HTTP authorizer returns 403 (not 401) when the JWT is
+  // expired or invalid; treat both as "needs refresh" signals.
+  if ((res.status === 401 || res.status === 403) && useAuth && (await refresh())) {
     const newAccess = await storage.getAccess();
     res = await doFetch(path, { ...opts, auth: useAuth }, newAccess);
   }

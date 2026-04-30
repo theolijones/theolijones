@@ -1,3 +1,12 @@
+export interface EdlBackground {
+  /** S3 key of the background image (typically a `library/...` path). */
+  assetKey: string;
+  /** "segment" = render-worker masks the person and composites over this background.
+   *  "static" = composite the BG behind the unmasked frame (decorative only).
+   */
+  mode: "segment" | "static";
+}
+
 export interface EdlBase {
   /** Canvas dimensions the EDL was authored against (typically the video's native dims). */
   width: number;
@@ -5,6 +14,9 @@ export interface EdlBase {
   /** Video duration in ms. */
   durationMs: number;
   layers: EdlLayer[];
+  /** Optional chroma-key background. The render-worker honours `mode` only
+   *  when its segmentation pipeline is enabled; otherwise this is a no-op. */
+  background?: EdlBackground;
 }
 
 export type EdlLayer = EdlTextLayer | EdlImageLayer;
@@ -56,3 +68,6 @@ export const isValidEdl = (e: unknown): e is EdlBase => {
 
 export const edlHasLayers = (e: EdlBase | undefined): boolean =>
   !!e && Array.isArray(e.layers) && e.layers.length > 0;
+
+export const edlNeedsRender = (e: EdlBase | undefined): boolean =>
+  edlHasLayers(e) || !!e?.background;

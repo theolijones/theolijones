@@ -32,6 +32,9 @@ export interface SubmitUploadArgs {
   metadata?: Record<string, unknown>;
   edl?: EdlBase;
   assets?: { localUri: string; contentType: ImageAssetContentType; layerId: string }[];
+  /** When set, uploads the local file as the chroma-key background and the
+   *  resulting S3 key replaces `edl.background.assetKey` before completion. */
+  backgroundUpload?: { localUri: string; contentType: ImageAssetContentType };
   onProgress?: (fraction: number) => void;
 }
 
@@ -111,6 +114,7 @@ export const submitUpload = async ({
   metadata,
   edl,
   assets = [],
+  backgroundUpload,
   onProgress,
 }: SubmitUploadArgs): Promise<CompletedUpload> => {
   const create = await createUpload({ metadata, videoContentType });
@@ -124,6 +128,13 @@ export const submitUpload = async ({
     layerIdToAssetKey.set(asset.layerId, presign.assetKey);
   }
 
+  let backgroundAssetKey: string | undefined;
+  if (backgroundUpload) {
+    const presign = await requestAsset(create.uploadId, backgroundUpload.contentType);
+    await uploadLocalFile(backgroundUpload.localUri, presign.uploadUrl, backgroundUpload.contentType);
+    backgroundAssetKey = presign.assetKey;
+  }
+
   const resolvedEdl = edl
     ? {
         ...edl,
@@ -132,6 +143,10 @@ export const submitUpload = async ({
             ? { ...l, assetKey: layerIdToAssetKey.get(l.id)! }
             : l
         ),
+        background:
+          edl.background && backgroundAssetKey
+            ? { ...edl.background, assetKey: backgroundAssetKey }
+            : edl.background,
       }
     : undefined;
 

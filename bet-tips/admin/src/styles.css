@@ -179,3 +179,62 @@ th {
   align-items: center;
   margin-bottom: 8px;
 }
+
+.asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+}
+.asset-tile {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.asset-tile.inactive { opacity: 0.5; }
+.asset-thumb {
+  position: relative;
+  background: #0a1224 repeating-conic-gradient(#1e293b 0% 25%, transparent 0% 50%) 50% / 16px 16px;
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.asset-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.asset-thumb .badge { position: absolute; top: 8px; left: 8px; }
+.asset-thumb .kind-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0,0,0,0.6);
+  color: var(--text);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.asset-meta {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.link-like {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  font-size: 14px;
+  word-break: break-word;
+}
+.link-like:hover { color: var(--accent); background: transparent; }

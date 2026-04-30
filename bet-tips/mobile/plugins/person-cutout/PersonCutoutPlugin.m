@@ -1,0 +1,320 @@
+//
+//  PersonCutoutPlugin.m
+//  BetTips
+//
+//  Frame processor plugin: runs Apple's person-segmentation Vision request,
+//  composites the camera frame over a chosen background using Core Image,
+//  and returns a uintptr_t pointer to the composited CVPixelBuffer. The
+//  JS-side worklet wraps that pointer as a Skia SkImage and draws it once
+//  via frame.drawImageRect — eliminating the per-frame Skia.Image.MakeImage +
+//  saveLayer allocation churn that previously caused iOS jetsam at ~14 sec
+//  (~300 MB unmapped GPU texture pool growth).
+//
+
+#import "PersonCutoutPlugin.h"
+
+#import <CoreImage/CoreImage.h>
+#import <CoreMedia/CoreMedia.h>
+#import <CoreVideo/CoreVideo.h>
+#import <Foundation/Foundation.h>
+#import <ImageIO/CGImageProperties.h>
+#import <Metal/Metal.h>
+#import <UIKit/UIKit.h>
+#import <Vision/Vision.h>
+#import <VisionCamera/Frame.h>
+#import <VisionCamera/FrameProcessorPluginRegistry.h>
+#import <mach/mach.h>
+
+// Static double-buffer for the composited output. Pre-allocated once at
+// first frame (or on dimension change) and reused indefinitely. Avoids
+// CVPixelBufferPool growth — phys_footprint stays bounded regardless of
+// how long the GPU pipeline holds an IOSurface alive.
+static const int kOutputBufferCount = 2;
+
+@implementation PersonCutoutPlugin {
+  VNGeneratePersonSegmentationRequest *_request API_AVAILABLE(ios(15.0));
+
+  CIContext *_ciContext;
+  uint64_t _frameCounter;
+  uint64_t _firstFrameMachTime;
+
+  NSString *_lastBgURI;
+  CIImage *_cachedBg;            // BG loaded from disk, in image-native orientation
+  CIImage *_cachedBgFitted;      // BG transformed to match current camera buffer
+  size_t _lastFittedW;
+  size_t _lastFittedH;
+  UIImageOrientation _lastFittedOrientation;
+
+  CVPixelBufferRef _outputBuffers[2]; // sized to kOutputBufferCount
+  int _outputBufferIdx;
+  size_t _outputBuffersW;
+  size_t _outputBuffersH;
+}
+
+- (instancetype)initWithProxy:(VisionCameraProxyHolder *)proxy
+                  withOptions:(NSDictionary *)options {
+  self = [super initWithProxy:proxy withOptions:options];
+  if (self) {
+    if (@available(iOS 15.0, *)) {
+      _request = [[VNGeneratePersonSegmentationRequest alloc] init];
+      _request.qualityLevel = VNGeneratePersonSegmentationRequestQualityLevelBalanced;
+      _request.outputPixelFormat = kCVPixelFormatType_OneComponent8;
+    }
+
+    // Metal-backed CIContext with intermediate caching disabled. Build #5
+    // showed the per-frame leak (~240 MB/s, dominated by compressed memory
+    // growth) was NOT in the output buffer pool — double-buffer didn't help.
+    // Reinstating kCIContextCacheIntermediates=NO so CI doesn't keep working
+    // textures around between renders. iOS compresses those dirty pages and
+    // the compression itself counts toward phys_footprint.
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    NSDictionary *ctxOpts = @{
+      kCIContextCacheIntermediates : @(NO),
+    };
+    if (device) {
+      _ciContext = [CIContext contextWithMTLDevice:device options:ctxOpts];
+    } else {
+      _ciContext = [CIContext contextWithOptions:ctxOpts];
+    }
+  }
+  return self;
+}
+
+- (void)dealloc {
+  for (int i = 0; i < kOutputBufferCount; i++) {
+    if (_outputBuffers[i]) {
+      CVPixelBufferRelease(_outputBuffers[i]);
+      _outputBuffers[i] = NULL;
+    }
+  }
+}
+
+// Map the camera frame's UIImageOrientation to the CGImagePropertyOrientation
+// that, when applied to an upright BG image, lays it into camera-buffer
+// (sensor) orientation. iPhone back camera in portrait reports
+// UIImageOrientationRight (sensor "top" points right), so the BG needs to
+// rotate 90° CCW (Left) to match. Mirroring is dropped — the camera buffer
+// gets mirrored on front camera but the BG should not.
+static CGImagePropertyOrientation BgOrientationFromFrame(UIImageOrientation o) {
+  switch (o) {
+    case UIImageOrientationUp:
+    case UIImageOrientationUpMirrored:
+      return kCGImagePropertyOrientationUp;
+    case UIImageOrientationDown:
+    case UIImageOrientationDownMirrored:
+      return kCGImagePropertyOrientationDown;
+    case UIImageOrientationLeft:
+    case UIImageOrientationLeftMirrored:
+      return kCGImagePropertyOrientationRight;
+    case UIImageOrientationRight:
+    case UIImageOrientationRightMirrored:
+      return kCGImagePropertyOrientationLeft;
+  }
+  return kCGImagePropertyOrientationUp;
+}
+
+- (BOOL)ensureOutputBuffersForWidth:(size_t)w height:(size_t)h {
+  if (_outputBuffers[0] && _outputBuffersW == w && _outputBuffersH == h) return YES;
+
+  // Dimensions changed (or first call). Free any existing and re-allocate.
+  for (int i = 0; i < kOutputBufferCount; i++) {
+    if (_outputBuffers[i]) {
+      CVPixelBufferRelease(_outputBuffers[i]);
+      _outputBuffers[i] = NULL;
+    }
+  }
+
+  NSDictionary *attrs = @{
+    (NSString *)kCVPixelBufferIOSurfacePropertiesKey : @{},
+    (NSString *)kCVPixelBufferMetalCompatibilityKey : @(YES),
+  };
+  for (int i = 0; i < kOutputBufferCount; i++) {
+    CVPixelBufferRef buf = NULL;
+    CVReturn r = CVPixelBufferCreate(NULL, w, h,
+                                     kCVPixelFormatType_32BGRA,
+                                     (__bridge CFDictionaryRef)attrs,
+                                     &buf);
+    if (r != kCVReturnSuccess || buf == NULL) {
+      // Roll back any partial allocation.
+      for (int j = 0; j < i; j++) {
+        CVPixelBufferRelease(_outputBuffers[j]);
+        _outputBuffers[j] = NULL;
+      }
+      return NO;
+    }
+    _outputBuffers[i] = buf;
+  }
+  _outputBuffersW = w;
+  _outputBuffersH = h;
+  _outputBufferIdx = 0;
+  return YES;
+}
+
+- (BOOL)ensureFittedBgForWidth:(size_t)w
+                        height:(size_t)h
+                   orientation:(UIImageOrientation)orientation {
+  if (_cachedBg == nil) return NO;
+  if (_cachedBgFitted &&
+      _lastFittedW == w &&
+      _lastFittedH == h &&
+      _lastFittedOrientation == orientation) {
+    return YES;
+  }
+  CIImage *rotated = [_cachedBg imageByApplyingOrientation:BgOrientationFromFrame(orientation)];
+  CGRect ext = rotated.extent;
+  if (ext.size.width <= 0 || ext.size.height <= 0) return NO;
+
+  // Aspect-fill: scale the BG so it FILLS the camera buffer, preserving
+  // aspect ratio. Overflow on the long axis gets cropped at composite time.
+  // Using "stretch to fill" earlier squashed portrait BGs into landscape
+  // camera frames.
+  CGFloat sx = (CGFloat)w / ext.size.width;
+  CGFloat sy = (CGFloat)h / ext.size.height;
+  CGFloat scale = MAX(sx, sy);
+  CGFloat scaledW = ext.size.width * scale;
+  CGFloat scaledH = ext.size.height * scale;
+  // Center the scaled BG inside the camera buffer.
+  CGFloat dx = ((CGFloat)w - scaledW) / 2.0 - ext.origin.x * scale;
+  CGFloat dy = ((CGFloat)h - scaledH) / 2.0 - ext.origin.y * scale;
+  CGAffineTransform tx = CGAffineTransformMake(scale, 0, 0, scale, dx, dy);
+
+  _cachedBgFitted = [rotated imageByApplyingTransform:tx];
+  _lastFittedW = w;
+  _lastFittedH = h;
+  _lastFittedOrientation = orientation;
+  return YES;
+}
+
+- (id)callback:(Frame *)frame withArguments:(NSDictionary *)arguments {
+  if (@available(iOS 15.0, *)) {
+    if (_request == nil) return nil;
+
+    // The frame processor runs on a non-runloop dispatch queue. Without an
+    // explicit pool, CIImage / CIFilter / VNImageRequestHandler autoreleased
+    // objects accumulate every frame — each retains its source CVPixelBuffer
+    // — and memory climbs ~6 MB/frame until iOS jetsam (3 GB ActiveHard limit)
+    // kills the app in ~18 sec.
+    __block id resultDict = nil;
+    @autoreleasepool {
+      NSString *bgURI = arguments[@"bgUri"];
+      if (![bgURI isKindOfClass:[NSString class]] || bgURI.length == 0) return nil;
+
+      if (![bgURI isEqualToString:_lastBgURI]) {
+        NSURL *url = [NSURL URLWithString:bgURI];
+        // kCIImageApplyOrientationProperty applies the image's EXIF
+        // orientation tag (e.g. iPhone portrait photos are stored as
+        // landscape pixels + EXIF "rotate 90° right" — without this, BG
+        // appears upside down or sideways).
+        NSDictionary *opts = @{ kCIImageApplyOrientationProperty : @(YES) };
+        CIImage *loaded = url ? [CIImage imageWithContentsOfURL:url options:opts] : nil;
+        if (loaded == nil) return nil;
+        _cachedBg = loaded;
+        _cachedBgFitted = nil;
+        _lastBgURI = [bgURI copy];
+      }
+
+      CMSampleBufferRef sampleBuffer = frame.buffer;
+      if (sampleBuffer == NULL) return nil;
+      CVPixelBufferRef cameraBuf = CMSampleBufferGetImageBuffer(sampleBuffer);
+      if (cameraBuf == NULL) return nil;
+
+      size_t w = CVPixelBufferGetWidth(cameraBuf);
+      size_t h = CVPixelBufferGetHeight(cameraBuf);
+      if (w == 0 || h == 0) return nil;
+
+      // VNImageRequestHandler is the right tool here — segmentation is
+      // stateless per-frame, not a sequence-tracking request. The handler
+      // is autoreleased and freed by the surrounding @autoreleasepool.
+      VNImageRequestHandler *handler =
+          [[VNImageRequestHandler alloc] initWithCVPixelBuffer:cameraBuf options:@{}];
+      NSError *error = nil;
+      if (![handler performRequests:@[ _request ] error:&error] || error != nil) {
+        return nil;
+      }
+      NSArray *results = _request.results;
+      if (results.count == 0) return nil;
+      id first = results.firstObject;
+      if (![first isKindOfClass:[VNPixelBufferObservation class]]) return nil;
+      VNPixelBufferObservation *observation = (VNPixelBufferObservation *)first;
+      CVPixelBufferRef maskBuf = observation.pixelBuffer;
+      if (maskBuf == NULL) return nil;
+
+      CIImage *cameraCI = [CIImage imageWithCVPixelBuffer:cameraBuf];
+      CIImage *maskCI = [CIImage imageWithCVPixelBuffer:maskBuf];
+      size_t mw = CVPixelBufferGetWidth(maskBuf);
+      size_t mh = CVPixelBufferGetHeight(maskBuf);
+      if (mw == 0 || mh == 0) return nil;
+      if (mw != w || mh != h) {
+        CGAffineTransform ms = CGAffineTransformMakeScale((CGFloat)w / mw, (CGFloat)h / mh);
+        maskCI = [maskCI imageByApplyingTransform:ms];
+      }
+
+      if (![self ensureFittedBgForWidth:w height:h orientation:frame.orientation]) {
+        return nil;
+      }
+
+      CIFilter *blend = [CIFilter filterWithName:@"CIBlendWithMask"];
+      [blend setValue:cameraCI forKey:kCIInputImageKey];
+      [blend setValue:_cachedBgFitted forKey:kCIInputBackgroundImageKey];
+      [blend setValue:maskCI forKey:kCIInputMaskImageKey];
+      CIImage *composited = blend.outputImage;
+      if (composited == nil) return nil;
+
+      if (![self ensureOutputBuffersForWidth:w height:h]) return nil;
+      // Double-buffer: render into the buffer NOT used by the most recent
+      // frame. The previous frame's buffer is still being sampled by Skia's
+      // queued GPU draw; toggling avoids the read/write race without a
+      // full Metal command buffer sync.
+      _outputBufferIdx ^= 1;
+      CVPixelBufferRef outBuf = _outputBuffers[_outputBufferIdx];
+
+      [_ciContext render:composited
+         toCVPixelBuffer:outBuf
+                  bounds:CGRectMake(0, 0, w, h)
+              colorSpace:nil];
+
+      // Memory instrumentation. phys_footprint is the metric iOS uses for
+      // jetsam decisions — it counts compressed pages and IOSurface
+      // commitments that resident_size omits. resident_size in earlier
+      // builds undercounted by 3-4× and was not predictive of the kill.
+      _frameCounter++;
+      if ((_frameCounter % 30) == 1) {
+        struct task_vm_info vmInfo;
+        mach_msg_type_number_t vmCount = TASK_VM_INFO_COUNT;
+        kern_return_t kr = task_info(mach_task_self(), TASK_VM_INFO,
+                                     (task_info_t)&vmInfo, &vmCount);
+        if (kr == KERN_SUCCESS) {
+          if (_firstFrameMachTime == 0) _firstFrameMachTime = mach_absolute_time();
+          mach_timebase_info_data_t tb;
+          mach_timebase_info(&tb);
+          uint64_t elapsedNs = (mach_absolute_time() - _firstFrameMachTime) * tb.numer / tb.denom;
+          double elapsedSec = (double)elapsedNs / 1.0e9;
+          NSLog(@"[cutout-mem] frame=%llu t=%.2fs footprint=%.1fMB resident=%.1fMB compressed=%.1fMB frameSize=%lux%lu",
+                (unsigned long long)_frameCounter,
+                elapsedSec,
+                (double)vmInfo.phys_footprint / (1024.0 * 1024.0),
+                (double)vmInfo.resident_size / (1024.0 * 1024.0),
+                (double)vmInfo.compressed / (1024.0 * 1024.0),
+                (unsigned long)w,
+                (unsigned long)h);
+        }
+      }
+
+      // Return the pointer as a string. JSI's BigInt extraction (via
+      // Skia.Image.MakeImageFromNativeBuffer) requires a JSI BigInt, but
+      // VisionCamera marshals NSNumber as jsi::Number (double). Strings
+      // marshal cleanly as jsi::String, and JS converts via BigInt(string).
+      resultDict = @{
+        @"buffer" : [NSString stringWithFormat:@"%lu", (unsigned long)(uintptr_t)outBuf],
+        @"width" : @(w),
+        @"height" : @(h),
+      };
+    }
+    return resultDict;
+  }
+  return nil;
+}
+
+VISION_EXPORT_FRAME_PROCESSOR(PersonCutoutPlugin, runPersonCutout)
+
+@end

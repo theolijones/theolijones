@@ -1,8 +1,14 @@
+export interface EdlBackground {
+  assetKey: string;
+  mode: "segment" | "static";
+}
+
 export interface EdlBase {
   width: number;
   height: number;
   durationMs: number;
   layers: EdlLayer[];
+  background?: EdlBackground;
 }
 
 export type EdlLayer = EdlTextLayer | EdlImageLayer;
