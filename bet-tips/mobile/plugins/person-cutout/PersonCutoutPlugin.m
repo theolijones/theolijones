@@ -49,6 +49,8 @@ static const int kOutputBufferCount = 2;
   int _outputBufferIdx;
   size_t _outputBuffersW;
   size_t _outputBuffersH;
+
+  CGColorSpaceRef _sRGBColorSpace;
 }
 
 - (instancetype)initWithProxy:(VisionCameraProxyHolder *)proxy
@@ -76,6 +78,13 @@ static const int kOutputBufferCount = 2;
     } else {
       _ciContext = [CIContext contextWithOptions:ctxOpts];
     }
+
+    // Destination color space for CIContext render. Without this (passing nil),
+    // the camera buffer's BT.709 video gamma got reinterpreted as sRGB at the
+    // Skia draw step — blacks crushed, midtones steepened, output looked
+    // contrasty and oversaturated. Pinning the destination to sRGB so the
+    // rendered pixels match what Skia/the dev client display assumes.
+    _sRGBColorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
   }
   return self;
 }
@@ -87,14 +96,22 @@ static const int kOutputBufferCount = 2;
       _outputBuffers[i] = NULL;
     }
   }
+  if (_sRGBColorSpace) {
+    CGColorSpaceRelease(_sRGBColorSpace);
+    _sRGBColorSpace = NULL;
+  }
 }
 
 // Map the camera frame's UIImageOrientation to the CGImagePropertyOrientation
-// that, when applied to an upright BG image, lays it into camera-buffer
-// (sensor) orientation. iPhone back camera in portrait reports
-// UIImageOrientationRight (sensor "top" points right), so the BG needs to
-// rotate 90° CCW (Left) to match. Mirroring is dropped — the camera buffer
-// gets mirrored on front camera but the BG should not.
+// to apply to an upright BG so that the BG, after VisionCamera rotates the
+// whole composited surface for display, ends up right-side-up.
+//
+// Verified empirically (2026-05-07): for frame.orientation=Left (typical
+// iPhone portrait back camera in this app), VC rotates the surface 90° CW
+// for display. The BG must be rotated 90° CW pre-composite (= CG orientation
+// Left = 8) so it lands upright after VC's rotation. Same direction (matched,
+// not inverted) for Right. The previous mapping inverted these and produced
+// a 180° upside-down BG.
 static CGImagePropertyOrientation BgOrientationFromFrame(UIImageOrientation o) {
   switch (o) {
     case UIImageOrientationUp:
@@ -105,10 +122,10 @@ static CGImagePropertyOrientation BgOrientationFromFrame(UIImageOrientation o) {
       return kCGImagePropertyOrientationDown;
     case UIImageOrientationLeft:
     case UIImageOrientationLeftMirrored:
-      return kCGImagePropertyOrientationRight;
+      return kCGImagePropertyOrientationLeft;
     case UIImageOrientationRight:
     case UIImageOrientationRightMirrored:
-      return kCGImagePropertyOrientationLeft;
+      return kCGImagePropertyOrientationRight;
   }
   return kCGImagePropertyOrientationUp;
 }
@@ -160,7 +177,14 @@ static CGImagePropertyOrientation BgOrientationFromFrame(UIImageOrientation o) {
       _lastFittedOrientation == orientation) {
     return YES;
   }
-  CIImage *rotated = [_cachedBg imageByApplyingOrientation:BgOrientationFromFrame(orientation)];
+  CGImagePropertyOrientation bgRotate = BgOrientationFromFrame(orientation);
+  if (_lastFittedOrientation != orientation || _cachedBgFitted == nil) {
+    NSLog(@"[cutout-bg] fitting BG for camera frame.orientation=%ld -> "
+          @"applying CG orientation=%u (1=Up,3=Down,6=Right,8=Left); "
+          @"buffer=%zux%zu",
+          (long)orientation, (unsigned)bgRotate, w, h);
+  }
+  CIImage *rotated = [_cachedBg imageByApplyingOrientation:bgRotate];
   CGRect ext = rotated.extent;
   if (ext.size.width <= 0 || ext.size.height <= 0) return NO;
 
@@ -201,14 +225,47 @@ static CGImagePropertyOrientation BgOrientationFromFrame(UIImageOrientation o) {
 
       if (![bgURI isEqualToString:_lastBgURI]) {
         NSURL *url = [NSURL URLWithString:bgURI];
-        // kCIImageApplyOrientationProperty applies the image's EXIF
-        // orientation tag (e.g. iPhone portrait photos are stored as
-        // landscape pixels + EXIF "rotate 90° right" — without this, BG
-        // appears upside down or sideways).
-        NSDictionary *opts = @{ kCIImageApplyOrientationProperty : @(YES) };
-        CIImage *loaded = url ? [CIImage imageWithContentsOfURL:url options:opts] : nil;
-        if (loaded == nil) return nil;
-        _cachedBg = loaded;
+        if (url == nil) return nil;
+
+        // Load raw pixels via ImageIO and read EXIF orientation as a
+        // separate step. [CIImage imageWithContentsOfURL:] sometimes
+        // auto-applies EXIF (and sometimes doesn't) depending on iOS
+        // version and image format — but in either case it still reports
+        // the original orientation tag in .properties, which led to a
+        // double-rotation (BG ended up 180° upside down for typical
+        // iPhone portrait photos with EXIF=6). CGImageSource never
+        // auto-rotates, so this is unambiguous.
+        CGImageSourceRef src = CGImageSourceCreateWithURL((__bridge CFURLRef)url, NULL);
+        if (src == NULL) return nil;
+
+        CGImagePropertyOrientation exifOrient = kCGImagePropertyOrientationUp;
+        CFDictionaryRef cfProps = CGImageSourceCopyPropertiesAtIndex(src, 0, NULL);
+        if (cfProps != NULL) {
+          NSDictionary *props = (__bridge_transfer NSDictionary *)cfProps;
+          NSNumber *orientNum = props[(NSString *)kCGImagePropertyOrientation];
+          if (orientNum != nil) {
+            exifOrient = (CGImagePropertyOrientation)orientNum.intValue;
+          }
+        }
+
+        CGImageRef cgImg = CGImageSourceCreateImageAtIndex(src, 0, NULL);
+        CFRelease(src);
+        if (cgImg == NULL) return nil;
+
+        CIImage *raw = [CIImage imageWithCGImage:cgImg];
+        CGImageRelease(cgImg);
+        if (raw == nil) return nil;
+
+        CIImage *upright = (exifOrient == kCGImagePropertyOrientationUp)
+            ? raw
+            : [raw imageByApplyingOrientation:exifOrient];
+
+        NSLog(@"[cutout-bg] loaded BG, exif=%u, raw extent=%@, upright extent=%@",
+              (unsigned)exifOrient,
+              NSStringFromCGRect(raw.extent),
+              NSStringFromCGRect(upright.extent));
+
+        _cachedBg = upright;
         _cachedBgFitted = nil;
         _lastBgURI = [bgURI copy];
       }
@@ -271,7 +328,7 @@ static CGImagePropertyOrientation BgOrientationFromFrame(UIImageOrientation o) {
       [_ciContext render:composited
          toCVPixelBuffer:outBuf
                   bounds:CGRectMake(0, 0, w, h)
-              colorSpace:nil];
+              colorSpace:_sRGBColorSpace];
 
       // Memory instrumentation. phys_footprint is the metric iOS uses for
       // jetsam decisions — it counts compressed pages and IOSurface
