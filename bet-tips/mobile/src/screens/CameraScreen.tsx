@@ -25,6 +25,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { BackgroundChoice, RootStackParamList } from "../navigation/types";
 import type { ImageAssetContentType, VideoContentType } from "../api/uploads";
 import { listLibraryAssets, type LibraryAsset } from "../api/library";
+import { CutoutRecorder } from "../native/cutoutRecorder";
 
 // Native iOS plugin that runs Apple Vision's VNGeneratePersonSegmentationRequest
 // + Core Image composite each frame, returning a pointer to a CVPixelBuffer.
@@ -73,6 +74,13 @@ const CameraScreen = () => {
 
   const camera = useRef<Camera | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Whether the active recording session is using the cutout pipeline.
+  // Captured at startRecording time so finishRecording knows whether to
+  // merge or just hand back VC's mp4 directly. Stored in a ref so a
+  // mid-recording BG change wouldn't switch behavior — the BG button is
+  // disabled during recording so this is belt-and-braces.
+  const cutoutSession = useRef<{ active: boolean } | null>(null);
 
   // Live person-cutout preview pipeline. Native iOS plugin runs Vision
   // segmentation AND the camera/BG composite in Core Image, returning a
@@ -188,7 +196,7 @@ const CameraScreen = () => {
     timer.current = null;
   };
 
-  const finishRecording = (uri: string) => {
+  const navigateToPreview = (uri: string) => {
     nav.navigate("Preview", {
       videoUri: uri,
       videoContentType: contentTypeFor(uri),
@@ -196,8 +204,45 @@ const CameraScreen = () => {
     });
   };
 
-  const startRecording = () => {
+  // VisionCamera 4 records the raw camera buffer to disk, bypassing the
+  // Skia worklet — so its mp4 has audio + raw camera but no cutout. When
+  // a BG is selected we run a parallel native AVAssetWriter
+  // (CutoutRecorder) that captures the composited frames the plugin
+  // already produces, then splices VisionCamera's audio onto that video
+  // post-stop. Without a BG the cutout pipeline is skipped and VC's mp4
+  // is used directly.
+  const finishWithCutoutMerge = async (vcVideoUri: string) => {
+    try {
+      const cutout = await CutoutRecorder.stopRecording();
+      console.log(
+        `[cutout] frames written=${cutout.framesWritten} dropped=${cutout.framesDropped}`,
+      );
+      const vcPath = vcVideoUri.startsWith("file://")
+        ? vcVideoUri.replace(/^file:\/\//, "")
+        : vcVideoUri;
+      const merged = await CutoutRecorder.mergeAudio(cutout.path, vcPath);
+      navigateToPreview(`file://${merged}`);
+    } catch (e) {
+      // Cutout pipeline failed somewhere — fall back to VC's raw mp4 so
+      // the user still has SOMETHING to upload. Server-side render-worker
+      // can still apply the BG composite if needed.
+      console.warn("[cutout] merge failed, falling back to raw camera:", e);
+      navigateToPreview(vcVideoUri);
+    }
+  };
+
+  const startRecording = async () => {
     if (!camera.current || recording) return;
+    const useCutout = background != null && CutoutRecorder.isAvailable;
+    if (useCutout) {
+      try {
+        await CutoutRecorder.startRecording();
+      } catch (e) {
+        console.warn("[cutout] startRecording failed:", e);
+        // Fall through to VC-only recording.
+      }
+    }
+    cutoutSession.current = { active: useCutout };
     setRecording(true);
     startTimer();
     camera.current.startRecording({
@@ -205,12 +250,23 @@ const CameraScreen = () => {
         setRecording(false);
         stopTimer();
         const uri = video.path.startsWith("file://") ? video.path : `file://${video.path}`;
-        finishRecording(uri);
+        if (cutoutSession.current?.active) {
+          void finishWithCutoutMerge(uri);
+        } else {
+          navigateToPreview(uri);
+        }
       },
       onRecordingError: (e) => {
         console.warn("recording error", e);
         setRecording(false);
         stopTimer();
+        // Make sure the cutout writer is closed even on VC error so
+        // resources don't leak across retries.
+        if (cutoutSession.current?.active) {
+          CutoutRecorder.stopRecording().catch((stopErr) =>
+            console.warn("[cutout] cleanup stop failed:", stopErr),
+          );
+        }
       },
     });
   };
