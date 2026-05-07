@@ -15,7 +15,12 @@ const {
 } = require("@expo/config-plugins");
 
 const PLUGIN_DIR_NAME = "person-cutout";
-const FILES = ["PersonCutoutPlugin.h", "PersonCutoutPlugin.m"];
+const FILES = [
+  "PersonCutoutPlugin.h",
+  "PersonCutoutPlugin.m",
+  "CutoutRecorder.h",
+  "CutoutRecorder.m",
+];
 
 /**
  * Copy plugin source files into the prebuilt iOS target directory.

@@ -12,6 +12,7 @@
 //
 
 #import "PersonCutoutPlugin.h"
+#import "CutoutRecorder.h"
 
 #import <CoreImage/CoreImage.h>
 #import <CoreMedia/CoreMedia.h>
@@ -25,11 +26,15 @@
 #import <VisionCamera/FrameProcessorPluginRegistry.h>
 #import <mach/mach.h>
 
-// Static double-buffer for the composited output. Pre-allocated once at
-// first frame (or on dimension change) and reused indefinitely. Avoids
-// CVPixelBufferPool growth — phys_footprint stays bounded regardless of
-// how long the GPU pipeline holds an IOSurface alive.
-static const int kOutputBufferCount = 2;
+// Static ring of output buffers for the composited frames. Pre-allocated
+// once at first frame (or on dimension change) and reused indefinitely.
+// Avoids CVPixelBufferPool growth — phys_footprint stays bounded regardless
+// of how long the GPU pipeline (or the recording AVAssetWriter) holds an
+// IOSurface alive. 3 slots: one being rendered into, one queued for Skia
+// draw, one being encoded by the H.264 hardware encoder during recording.
+// 2 was enough for preview-only; the recorder retains a buffer briefly
+// across its writer-queue dispatch and a 3rd slot keeps the rotation safe.
+static const int kOutputBufferCount = 3;
 
 @implementation PersonCutoutPlugin {
   VNGeneratePersonSegmentationRequest *_request API_AVAILABLE(ios(15.0));
@@ -45,7 +50,7 @@ static const int kOutputBufferCount = 2;
   size_t _lastFittedH;
   UIImageOrientation _lastFittedOrientation;
 
-  CVPixelBufferRef _outputBuffers[2]; // sized to kOutputBufferCount
+  CVPixelBufferRef _outputBuffers[3]; // sized to kOutputBufferCount
   int _outputBufferIdx;
   size_t _outputBuffersW;
   size_t _outputBuffersH;
@@ -261,17 +266,31 @@ static CGImagePropertyOrientation BgOrientationFromFrame(UIImageOrientation o) {
       if (composited == nil) return nil;
 
       if (![self ensureOutputBuffersForWidth:w height:h]) return nil;
-      // Double-buffer: render into the buffer NOT used by the most recent
-      // frame. The previous frame's buffer is still being sampled by Skia's
-      // queued GPU draw; toggling avoids the read/write race without a
-      // full Metal command buffer sync.
-      _outputBufferIdx ^= 1;
+      // Ring buffer: render into the next slot. The previous slot is still
+      // being sampled by Skia's queued GPU draw (and during recording, by
+      // the H.264 encoder via AVAssetWriter), so we never write where a
+      // consumer is still reading. 3 slots is enough for the longest
+      // overlap (encoder taking ~2 frame times to compress).
+      _outputBufferIdx = (_outputBufferIdx + 1) % kOutputBufferCount;
       CVPixelBufferRef outBuf = _outputBuffers[_outputBufferIdx];
 
       [_ciContext render:composited
          toCVPixelBuffer:outBuf
                   bounds:CGRectMake(0, 0, w, h)
               colorSpace:nil];
+
+      // Hand the composited frame to the recorder. Cheap atomic-load
+      // no-op when not recording. When recording, the recorder retains
+      // the pixel buffer across an internal serial-queue dispatch and
+      // the H.264 encoder reads from it; the next 2 ring slots cover
+      // the encoder's read window before this slot is reused.
+      CMTime pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+      [[CutoutRecorder shared] appendBuffer:outBuf
+                                      width:w
+                                     height:h
+                                  timestamp:pts
+                                orientation:frame.orientation
+                                 isMirrored:frame.isMirrored];
 
       // Memory instrumentation. phys_footprint is the metric iOS uses for
       // jetsam decisions — it counts compressed pages and IOSurface
