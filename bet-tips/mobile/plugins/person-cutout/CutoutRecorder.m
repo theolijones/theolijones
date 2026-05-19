@@ -87,6 +87,12 @@ RCT_EXPORT_MODULE();
 // composited pixels are in sensor (camera-buffer) orientation; the player
 // uses this transform to rotate them to upright. We don't rotate pixels at
 // encode time — that would force a CPU-side reblit per frame.
+//
+// AVAssetWriterInput.transform operates in pixel coordinates where Y points
+// down, so positive angles are clockwise. Portrait-held device reports
+// frame.orientation = Left and needs 90° CW (M_PI_2) to play upright;
+// upside-down portrait reports Right and needs 90° CCW (-M_PI_2). The L/R
+// mapping mirrors the BG-orientation swap applied in PersonCutoutPlugin.m.
 static CGAffineTransform TransformForOrientation(UIImageOrientation o) {
   switch (o) {
     case UIImageOrientationUp:
@@ -97,10 +103,10 @@ static CGAffineTransform TransformForOrientation(UIImageOrientation o) {
       return CGAffineTransformMakeRotation(M_PI);
     case UIImageOrientationLeft:
     case UIImageOrientationLeftMirrored:
-      return CGAffineTransformMakeRotation(-M_PI_2);
+      return CGAffineTransformMakeRotation(M_PI_2);
     case UIImageOrientationRight:
     case UIImageOrientationRightMirrored:
-      return CGAffineTransformMakeRotation(M_PI_2);
+      return CGAffineTransformMakeRotation(-M_PI_2);
   }
   return CGAffineTransformIdentity;
 }
