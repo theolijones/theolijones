@@ -4,12 +4,21 @@ import { ddb, tables, type MetadataSchemaRecord, type UserRole } from "./shared/
 import { principalFrom } from "./shared/context";
 import { ok, unauthorized } from "./shared/http";
 
+// COP video-metadata sidecar. fixed = constant; input = talent fills in
+// (exposed in app); derived = computed from the account talent.
 const DEFAULT_FIELDS: MetadataSchemaRecord["fields"] = [
-  { key: "sportsbetUsername", label: "Sportsbet Username", type: "string", required: true },
-  { key: "shareId", label: "Bet Share ID", type: "string", required: true },
-  { key: "eventName", label: "Event Name", type: "string", required: false },
-  { key: "selection", label: "Selection", type: "string", required: false },
-  { key: "odds", label: "Odds", type: "number", required: false },
+  { key: "AssetClass", label: "Asset Class", type: "string", required: true, source: "fixed", fixedValue: "Bulletin" },
+  { key: "FeedTipId", label: "Bet ID", type: "string", required: true, source: "input", control: "text", exposed: true },
+  { key: "GenericContentType", label: "Generic Content Type", type: "string", required: true, source: "derived", derived: "genericContentType" },
+  { key: "TalentOrShowList", label: "Talent Or Show", type: "string", required: true, source: "derived", derived: "talentOrShowList" },
+  { key: "InternationalRace", label: "International Race", type: "boolean", required: true, source: "fixed", fixedValue: false },
+  { key: "SportsClass", label: "Sport", type: "enum", required: true, source: "input", control: "select", catalog: "sport", exposed: true },
+  { key: "SportsCompetitionName", label: "Competition", type: "enum", required: true, source: "input", control: "select", catalog: "competition", exposed: true },
+  { key: "EventDate", label: "Event Date", type: "string", required: true, source: "input", control: "date", exposed: true },
+  { key: "IsAvailableOnPlatform", label: "Is Available On Platform", type: "string", required: true, source: "fixed", fixedValue: "No" },
+  { key: "ShowPreviewImage", label: "Show Preview Image", type: "boolean", required: true, source: "fixed", fixedValue: true },
+  { key: "ThirdPartyFlag", label: "Third Party Flag", type: "boolean", required: true, source: "fixed", fixedValue: true },
+  { key: "TipType", label: "Tip Type", type: "enum", required: true, source: "input", control: "select", catalog: "tipType", exposed: true },
 ];
 
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{

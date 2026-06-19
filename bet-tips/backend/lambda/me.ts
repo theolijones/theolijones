@@ -22,6 +22,9 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     role: user.role,
     email: user.email,
     sportsbetUsername: user.sportsbetUsername,
+    talentId: user.talentId,
+    talentName: user.talentName,
+    talentInitials: user.talentInitials,
     createdAt: user.createdAt,
   });
 };

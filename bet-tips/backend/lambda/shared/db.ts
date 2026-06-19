@@ -28,6 +28,10 @@ export interface UserRecord {
   passwordHash?: string;
   signupTokenUsed?: string;
   expoPushToken?: string;
+  /** Talent assigned to this account (from the signup token). */
+  talentId?: string;
+  talentName?: string;
+  talentInitials?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -39,6 +43,10 @@ export interface TokenRecord {
   issuedBy: string;
   usedBy?: string;
   usedAt?: string;
+  /** Talent the redeeming account will be assigned. */
+  talentId?: string;
+  talentName?: string;
+  talentInitials?: string;
   createdAt: string;
   expiresAt?: string;
 }
@@ -75,6 +83,11 @@ export interface UploadRecord {
   updatedAt: string;
 }
 
+export type FieldSource = "fixed" | "input" | "derived";
+export type FieldControl = "text" | "number" | "boolean" | "date" | "select";
+export type FieldCatalog = "sport" | "competition" | "tipType";
+export type FieldDerivation = "talentOrShowList" | "genericContentType";
+
 export interface MetadataSchemaField {
   key: string;
   label: string;
@@ -82,6 +95,18 @@ export interface MetadataSchemaField {
   required: boolean;
   options?: string[];
   helpText?: string;
+  /** Where the value comes from. Absent ⇒ "input" (back-compat). */
+  source?: FieldSource;
+  /** source=fixed: constant emitted in every metadata file. */
+  fixedValue?: string | number | boolean;
+  /** source=input: how the app renders the field. Absent ⇒ derived from `type`. */
+  control?: FieldControl;
+  /** source=input & control=select: a code-backed catalog (else use `options`). */
+  catalog?: FieldCatalog;
+  /** source=input: whether the app shows this field. Absent ⇒ true. */
+  exposed?: boolean;
+  /** source=derived: which account-derived value to emit. */
+  derived?: FieldDerivation;
 }
 
 export interface MetadataSchemaRecord {

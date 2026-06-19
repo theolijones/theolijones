@@ -42,6 +42,9 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     role: "user",
     sportsbetUsername,
     signupTokenUsed: signupToken,
+    talentId: tokenRow.talentId,
+    talentName: tokenRow.talentName,
+    talentInitials: tokenRow.talentInitials,
     createdAt: now,
     updatedAt: now,
   };
@@ -82,7 +85,14 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
   const refreshToken = await signRefresh(userId, "user");
 
   return created({
-    user: { userId, role: user.role, sportsbetUsername },
+    user: {
+      userId,
+      role: user.role,
+      sportsbetUsername,
+      talentId: user.talentId,
+      talentName: user.talentName,
+      talentInitials: user.talentInitials,
+    },
     accessToken,
     refreshToken,
   });

@@ -8,6 +8,9 @@ import { bad, created, forbidden, parseJson, unauthorized } from "./shared/http"
 interface CreateBody {
   note?: string;
   expiresAt?: string;
+  talentId?: string;
+  talentName?: string;
+  talentInitials?: string;
 }
 
 const generateToken = (): string => {
@@ -42,6 +45,13 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     }
   }
 
+  const talentName = body.talentName?.trim();
+  const talentId = body.talentId?.trim();
+  const talentInitials = body.talentInitials?.trim().toUpperCase();
+  if ((talentId || talentName || talentInitials) && !(talentId && talentName && talentInitials)) {
+    return bad("talentId, talentName and talentInitials must be provided together");
+  }
+
   const token = generateToken();
   const now = new Date().toISOString();
   const row: TokenRecord = {
@@ -49,6 +59,9 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     status: "active",
     note: body.note,
     issuedBy: p.userId,
+    talentId,
+    talentName,
+    talentInitials,
     createdAt: now,
     expiresAt: body.expiresAt,
   };

@@ -23,13 +23,31 @@ export interface EdlLayerCommon {
   scale: number;
 }
 
+export type EdlFontFamily =
+  | "system"
+  | "system-bold"
+  | "inter"
+  | "oswald"
+  | "anton"
+  | "bebas"
+  | "marker";
+
 export interface EdlTextLayer extends EdlLayerCommon {
   type: "text";
   text: string;
   fontSizeRatio: number;
-  fontFamily: "system" | "system-bold";
+  fontFamily: EdlFontFamily;
   color: string;
+  /** Background "box" colour behind the text. Absent ⇒ no background. */
   background?: string;
+  /** Outline colour drawn around the glyphs. Absent ⇒ no stroke. */
+  strokeColor?: string;
+  /** Stroke width as a fraction of the font size (e.g. 0.08). */
+  strokeWidthRatio?: number;
+  /** Drop-shadow colour. Absent ⇒ no shadow. */
+  shadowColor?: string;
+  /** Shadow offset (x and y) as a fraction of the font size (e.g. 0.06). */
+  shadowOffsetRatio?: number;
   align: "left" | "center" | "right";
 }
 

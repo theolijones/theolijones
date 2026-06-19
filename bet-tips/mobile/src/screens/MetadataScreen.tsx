@@ -18,26 +18,33 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
 import { fetchSchema, type SchemaField } from "../api/schema";
 import { submitUpload } from "../api/uploads";
+import { useAuth } from "../auth/AuthContext";
+import { SPORTS, TIP_TYPES, sportByKey } from "../data/contentMappings";
+import {
+  buildVideoMetadata,
+  effectiveControl,
+  exposedInputFields,
+  missingRequired,
+  type FieldValue,
+} from "../api/metadata";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Metadata">;
 type MetadataRoute = RouteProp<RootStackParamList, "Metadata">;
 
-type FieldValue = string | number | boolean | null;
+interface Option {
+  label: string;
+  value: string;
+}
 
-const coerceForSubmit = (field: SchemaField, raw: FieldValue): unknown => {
-  if (raw === null || raw === "") return undefined;
-  if (field.type === "number") {
-    const n = typeof raw === "number" ? raw : Number(raw);
-    return Number.isFinite(n) ? n : undefined;
-  }
-  if (field.type === "boolean") return Boolean(raw);
-  return raw;
-};
+const pad = (n: number) => String(n).padStart(2, "0");
+const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const toTimeStr = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 const MetadataScreen = () => {
   const nav = useNavigation<Nav>();
   const route = useRoute<MetadataRoute>();
   const { videoUri, videoContentType, edl, assetRefs, background } = route.params;
+  const { me } = useAuth();
 
   const [fields, setFields] = useState<SchemaField[] | null>(null);
   const [values, setValues] = useState<Record<string, FieldValue>>({});
@@ -54,8 +61,9 @@ const MetadataScreen = () => {
         if (cancelled) return;
         setFields(res.fields);
         const seed: Record<string, FieldValue> = {};
-        res.fields.forEach((f) => {
-          seed[f.key] = f.type === "boolean" ? false : "";
+        exposedInputFields(res.fields).forEach((f) => {
+          const c = effectiveControl(f);
+          seed[f.key] = c === "boolean" ? false : c === "date" ? new Date() : "";
         });
         setValues(seed);
       } catch (e) {
@@ -68,33 +76,50 @@ const MetadataScreen = () => {
     };
   }, []);
 
-  const missingRequired = useMemo(() => {
-    if (!fields) return [];
-    return fields.filter((f) => {
-      if (!f.required) return false;
-      const v = values[f.key];
-      if (f.type === "boolean") return false;
-      return v === undefined || v === null || v === "";
-    });
-  }, [fields, values]);
+  const inputs = useMemo(() => (fields ? exposedInputFields(fields) : []), [fields]);
 
-  const setValue = (key: string, v: FieldValue) => setValues((prev) => ({ ...prev, [key]: v }));
+  // Talent-derived fields require an assigned talent on the account.
+  const needsTalent = useMemo(
+    () => !!fields?.some((f) => (f.source ?? "input") === "derived"),
+    [fields]
+  );
+  const talentMissing = needsTalent && (!me?.talentId || !me?.talentInitials);
 
-  const pasteInto = async (key: string) => {
-    const text = await Clipboard.getStringAsync();
-    if (text) setValue(key, text);
+  const missing = useMemo(
+    () => (fields ? missingRequired(fields, values) : []),
+    [fields, values]
+  );
+
+  const sportKey = useMemo(() => {
+    const sf = inputs.find((f) => f.catalog === "sport");
+    const v = sf ? values[sf.key] : undefined;
+    return typeof v === "string" ? v : "";
+  }, [inputs, values]);
+
+  const setValue = (key: string, v: FieldValue) =>
+    setValues((prev) => ({ ...prev, [key]: v }));
+
+  const optionsFor = (f: SchemaField): Option[] => {
+    if (f.catalog === "sport") return SPORTS.map((s) => ({ label: s.label, value: s.key }));
+    if (f.catalog === "tipType") return TIP_TYPES.map((t) => ({ label: t.name, value: t.id }));
+    if (f.catalog === "competition") {
+      const comps = sportKey ? sportByKey(sportKey)?.competitions ?? [] : [];
+      return comps.map((c) => ({ label: c, value: c }));
+    }
+    return (f.options ?? []).map((o) => ({ label: o, value: o }));
   };
 
+  const canSubmit = !!fields && !talentMissing && missing.length === 0 && !submitting;
+
   const submit = async () => {
-    if (!fields || missingRequired.length > 0) return;
+    if (!fields || !canSubmit) return;
     setSubmitting(true);
     setSubmitErr(null);
     setProgress(0);
     try {
-      const metadata: Record<string, unknown> = {};
-      fields.forEach((f) => {
-        const v = coerceForSubmit(f, values[f.key]);
-        if (v !== undefined) metadata[f.key] = v;
+      const metadata = buildVideoMetadata(fields, values, {
+        talentId: me?.talentId,
+        talentInitials: me?.talentInitials,
       });
       await submitUpload({
         videoUri,
@@ -146,17 +171,22 @@ const MetadataScreen = () => {
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Tip details</Text>
-          <Text style={styles.subtitle}>
-            Fill these in before submitting for review.
-          </Text>
+          <Text style={styles.subtitle}>Fill these in before submitting for review.</Text>
 
-          {fields!.map((f) => (
+          {talentMissing && (
+            <Text style={styles.error}>
+              Your account has no talent assigned. Ask an admin to set it on your signup
+              before submitting.
+            </Text>
+          )}
+
+          {inputs.map((f) => (
             <FieldRow
               key={f.key}
               field={f}
               value={values[f.key]}
+              options={optionsFor(f)}
               onChange={(v) => setValue(f.key, v)}
-              onPaste={() => pasteInto(f.key)}
             />
           ))}
 
@@ -167,26 +197,17 @@ const MetadataScreen = () => {
           {submitting ? (
             <View style={styles.progressWrap}>
               <ActivityIndicator color="#e2e8f0" />
-              <Text style={styles.progressText}>
-                Uploading… {Math.round(progress * 100)}%
-              </Text>
+              <Text style={styles.progressText}>Uploading… {Math.round(progress * 100)}%</Text>
             </View>
           ) : (
             <View style={styles.actions}>
-              <Pressable
-                style={[styles.btn, styles.secondaryBtn]}
-                onPress={() => nav.goBack()}
-              >
+              <Pressable style={[styles.btn, styles.secondaryBtn]} onPress={() => nav.goBack()}>
                 <Text style={styles.secondaryText}>Back</Text>
               </Pressable>
               <Pressable
-                style={[
-                  styles.btn,
-                  styles.primaryBtn,
-                  missingRequired.length > 0 && styles.disabled,
-                ]}
+                style={[styles.btn, styles.primaryBtn, !canSubmit && styles.disabled]}
                 onPress={submit}
-                disabled={missingRequired.length > 0}
+                disabled={!canSubmit}
               >
                 <Text style={styles.primaryText}>Submit for review</Text>
               </Pressable>
@@ -201,20 +222,25 @@ const MetadataScreen = () => {
 interface FieldRowProps {
   field: SchemaField;
   value: FieldValue;
+  options: Option[];
   onChange: (v: FieldValue) => void;
-  onPaste: () => void;
 }
 
-const FieldRow = ({ field, value, onChange, onPaste }: FieldRowProps) => {
-  const isBetShare = field.key === "shareId";
-  if (field.type === "boolean") {
+const FieldRow = ({ field, value, options, onChange }: FieldRowProps) => {
+  const control = effectiveControl(field);
+
+  const Label = (
+    <Text style={styles.label}>
+      {field.label}
+      {field.required && <Text style={styles.req}> *</Text>}
+    </Text>
+  );
+
+  if (control === "boolean") {
     return (
       <View style={styles.field}>
         <View style={styles.rowBetween}>
-          <Text style={styles.label}>
-            {field.label}
-            {field.required && <Text style={styles.req}> *</Text>}
-          </Text>
+          {Label}
           <Switch value={Boolean(value)} onValueChange={onChange} />
         </View>
         {field.helpText && <Text style={styles.help}>{field.helpText}</Text>}
@@ -222,60 +248,123 @@ const FieldRow = ({ field, value, onChange, onPaste }: FieldRowProps) => {
     );
   }
 
-  if (field.type === "enum" && field.options) {
+  if (control === "select") {
     return (
       <View style={styles.field}>
-        <Text style={styles.label}>
-          {field.label}
-          {field.required && <Text style={styles.req}> *</Text>}
-        </Text>
+        {Label}
         <View style={styles.enumWrap}>
-          {field.options.map((opt) => {
-            const selected = value === opt;
-            return (
-              <Pressable
-                key={opt}
-                onPress={() => onChange(opt)}
-                style={[styles.enumChip, selected && styles.enumChipSelected]}
-              >
-                <Text style={selected ? styles.enumChipTextSelected : styles.enumChipText}>
-                  {opt}
-                </Text>
-              </Pressable>
-            );
-          })}
+          {options.length === 0 ? (
+            <Text style={styles.help}>Select a sport first.</Text>
+          ) : (
+            options.map((opt) => {
+              const selected = value === opt.value;
+              return (
+                <Pressable
+                  key={opt.value}
+                  onPress={() => onChange(opt.value)}
+                  style={[styles.enumChip, selected && styles.enumChipSelected]}
+                >
+                  <Text style={selected ? styles.enumChipTextSelected : styles.enumChipText}>
+                    {opt.label}
+                  </Text>
+                </Pressable>
+              );
+            })
+          )}
         </View>
         {field.helpText && <Text style={styles.help}>{field.helpText}</Text>}
       </View>
     );
   }
 
-  const keyboardType = field.type === "number" ? "decimal-pad" : "default";
+  if (control === "date") {
+    return (
+      <View style={styles.field}>
+        {Label}
+        <DateTimeField value={value instanceof Date ? value : new Date()} onChange={onChange} />
+        {field.helpText && <Text style={styles.help}>{field.helpText}</Text>}
+      </View>
+    );
+  }
+
+  // text / number
+  const isText = control === "text";
+  const pasteInto = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (text) onChange(text);
+  };
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>
-        {field.label}
-        {field.required && <Text style={styles.req}> *</Text>}
-      </Text>
+      {Label}
       <View style={styles.inputRow}>
         <TextInput
-          style={[styles.input, isBetShare && { flex: 1 }]}
-          value={value === null ? "" : String(value)}
+          style={[styles.input, isText && { flex: 1 }]}
+          value={value === null || value === undefined ? "" : String(value)}
           onChangeText={onChange}
-          keyboardType={keyboardType}
+          keyboardType={control === "number" ? "decimal-pad" : "default"}
           autoCapitalize="none"
           autoCorrect={false}
           placeholder={field.helpText ?? ""}
           placeholderTextColor="#64748b"
         />
-        {isBetShare && (
-          <Pressable style={styles.pasteBtn} onPress={onPaste}>
+        {isText && (
+          <Pressable style={styles.pasteBtn} onPress={pasteInto}>
             <Text style={styles.pasteText}>Paste</Text>
           </Pressable>
         )}
       </View>
-      {field.helpText && !isBetShare && <Text style={styles.help}>{field.helpText}</Text>}
+    </View>
+  );
+};
+
+// JS-only date + time entry (no native module). Maintains text for partial
+// edits and commits a Date once both parts parse.
+const DateTimeField = ({ value, onChange }: { value: Date; onChange: (d: Date) => void }) => {
+  const [dateStr, setDateStr] = useState(toDateStr(value));
+  const [timeStr, setTimeStr] = useState(toTimeStr(value));
+
+  const commit = (d: string, t: string) => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.trim());
+    const tm = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
+    if (!m || !tm) return;
+    const next = new Date(
+      Number(m[1]),
+      Number(m[2]) - 1,
+      Number(m[3]),
+      Number(tm[1]),
+      Number(tm[2]),
+      0
+    );
+    if (!Number.isNaN(next.getTime())) onChange(next);
+  };
+
+  return (
+    <View style={styles.inputRow}>
+      <TextInput
+        style={[styles.input, { flex: 1.4 }]}
+        value={dateStr}
+        onChangeText={(v) => {
+          setDateStr(v);
+          commit(v, timeStr);
+        }}
+        placeholder="YYYY-MM-DD"
+        placeholderTextColor="#64748b"
+        keyboardType="numbers-and-punctuation"
+        autoCorrect={false}
+      />
+      <TextInput
+        style={[styles.input, { flex: 1 }]}
+        value={timeStr}
+        onChangeText={(v) => {
+          setTimeStr(v);
+          commit(dateStr, v);
+        }}
+        placeholder="HH:MM"
+        placeholderTextColor="#64748b"
+        keyboardType="numbers-and-punctuation"
+        autoCorrect={false}
+      />
     </View>
   );
 };
@@ -345,7 +434,7 @@ const styles = StyleSheet.create({
   primaryText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   secondaryText: { color: "#e2e8f0", fontSize: 16, fontWeight: "500" },
   disabled: { opacity: 0.5 },
-  error: { color: "#ef4444", fontSize: 14, textAlign: "center" },
+  error: { color: "#ef4444", fontSize: 14, textAlign: "center", marginBottom: 12 },
 });
 
 export default MetadataScreen;

@@ -1,6 +1,6 @@
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { HeadObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
 import {
   buckets,
@@ -96,6 +96,16 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: values,
       ReturnValues: "ALL_NEW",
+    })
+  );
+
+  // Write the metadata JSON sidecar next to the video.
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: buckets.media,
+      Key: `uploads/${p.userId}/${uploadId}/metadata.json`,
+      Body: JSON.stringify(record.metadata ?? {}, null, 2),
+      ContentType: "application/json",
     })
   );
 

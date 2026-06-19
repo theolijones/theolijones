@@ -16,7 +16,32 @@ const MEDIA_BUCKET = process.env.MEDIA_BUCKET!;
 const FFMPEG = process.env.FFMPEG_PATH ?? "/usr/bin/ffmpeg";
 const FONT_REG = process.env.FONT_REG ?? "/usr/share/fonts/dejavu/DejaVuSans.ttf";
 const FONT_BOLD = process.env.FONT_BOLD ?? "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf";
+// Bundled TTFs copied into the image by the Dockerfile (COPY render-worker/fonts).
+const FONTS_DIR =
+  process.env.FONTS_DIR ?? `${process.env.LAMBDA_TASK_ROOT ?? "/var/task"}/fonts`;
 const WORK = "/tmp/render";
+
+/** Map an EDL font key to a concrete .ttf path. The app ships the same files,
+ *  so the editor preview and the rendered video use identical typefaces. */
+const fontFileFor = (family: EdlTextLayer["fontFamily"]): string => {
+  switch (family) {
+    case "inter":
+      return `${FONTS_DIR}/Inter.ttf`;
+    case "oswald":
+      return `${FONTS_DIR}/Oswald.ttf`;
+    case "anton":
+      return `${FONTS_DIR}/Anton.ttf`;
+    case "bebas":
+      return `${FONTS_DIR}/BebasNeue.ttf`;
+    case "marker":
+      return `${FONTS_DIR}/PermanentMarker.ttf`;
+    case "system-bold":
+      return FONT_BOLD;
+    case "system":
+    default:
+      return FONT_REG;
+  }
+};
 
 interface UploadRecord {
   uploadId: string;
@@ -289,7 +314,7 @@ const buildTextFilterChain = (
   rotRad: number,
   stepIdx: number
 ): string[] => {
-  const fontFile = layer.fontFamily === "system-bold" ? FONT_BOLD : FONT_REG;
+  const fontFile = fontFileFor(layer.fontFamily);
   const fontSize = Math.max(8, Math.round(layer.fontSizeRatio * layer.scale * canvasH));
   const text = escapeDrawtext(layer.text);
   const color = sanitizeColor(layer.color) ?? "white";
@@ -304,6 +329,23 @@ const buildTextFilterChain = (
     const bg = sanitizeColor(layer.background);
     if (bg) {
       drawtextBase.push(`box=1`, `boxcolor=${bg}`, `boxborderw=${Math.round(fontSize * 0.25)}`);
+    }
+  }
+  // Stroke (glyph outline). Width scales with the font so it matches the
+  // editor preview regardless of canvas size.
+  if (layer.strokeColor) {
+    const stroke = sanitizeColor(layer.strokeColor);
+    if (stroke) {
+      const w = Math.max(1, Math.round((layer.strokeWidthRatio ?? 0.08) * fontSize));
+      drawtextBase.push(`borderw=${w}`, `bordercolor=${stroke}`);
+    }
+  }
+  // Drop shadow.
+  if (layer.shadowColor) {
+    const shadow = sanitizeColor(layer.shadowColor);
+    if (shadow) {
+      const off = Math.max(1, Math.round((layer.shadowOffsetRatio ?? 0.06) * fontSize));
+      drawtextBase.push(`shadowcolor=${shadow}`, `shadowx=${off}`, `shadowy=${off}`);
     }
   }
 

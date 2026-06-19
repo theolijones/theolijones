@@ -6,11 +6,13 @@ import {
   LayoutChangeEvent,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import type { TextStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
@@ -34,10 +36,23 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { AssetRef, RootStackParamList } from "../navigation/types";
 import type {
   EdlBase,
+  EdlFontFamily,
   EdlImageLayer,
   EdlTextLayer,
 } from "../api/edl";
 import type { ImageAssetContentType } from "../api/uploads";
+import {
+  COLOR_SWATCHES,
+  DEFAULT_BACKGROUND_COLOR,
+  DEFAULT_SHADOW_COLOR,
+  DEFAULT_SHADOW_OFFSET_RATIO,
+  DEFAULT_STROKE_COLOR,
+  DEFAULT_STROKE_WIDTH_RATIO,
+  DEFAULT_TEXT_COLOR,
+  FONT_OPTIONS,
+  fontStyle,
+  normalizeHex,
+} from "../data/textStyles";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Editor">;
 type EditorRoute = RouteProp<RootStackParamList, "Editor">;
@@ -55,8 +70,16 @@ interface EditorTextLayer extends EditorLayerCommon {
   type: "text";
   text: string;
   color: string;
-  fontFamily: "system" | "system-bold";
+  fontFamily: EdlFontFamily;
   fontSizeRatio: number;
+  /** Background box colour. Undefined ⇒ no background. */
+  background?: string;
+  /** Outline colour. Undefined ⇒ no stroke. */
+  strokeColor?: string;
+  strokeWidthRatio?: number;
+  /** Drop-shadow colour. Undefined ⇒ no shadow. */
+  shadowColor?: string;
+  shadowOffsetRatio?: number;
 }
 
 interface EditorImageLayer extends EditorLayerCommon {
@@ -84,9 +107,13 @@ const newTextLayer = (id: string): EditorTextLayer => ({
   y: 0.5,
   scale: 1,
   rotation: 0,
-  color: "#ffffff",
+  color: DEFAULT_TEXT_COLOR,
   fontFamily: "system-bold",
   fontSizeRatio: 0.06,
+  // A subtle drop shadow on by default — keeps captions legible over video
+  // (matches the look prior to per-layer styling).
+  shadowColor: DEFAULT_SHADOW_COLOR,
+  shadowOffsetRatio: DEFAULT_SHADOW_OFFSET_RATIO,
 });
 
 const contentTypeFromMime = (mime?: string): ImageAssetContentType => {
@@ -261,6 +288,11 @@ const EditorScreen = () => {
           fontSizeRatio: l.fontSizeRatio,
           fontFamily: l.fontFamily,
           color: l.color,
+          background: l.background,
+          strokeColor: l.strokeColor,
+          strokeWidthRatio: l.strokeColor ? l.strokeWidthRatio ?? DEFAULT_STROKE_WIDTH_RATIO : undefined,
+          shadowColor: l.shadowColor,
+          shadowOffsetRatio: l.shadowColor ? l.shadowOffsetRatio ?? DEFAULT_SHADOW_OFFSET_RATIO : undefined,
           align: "center",
         };
         return t;
@@ -333,22 +365,13 @@ const EditorScreen = () => {
         </View>
 
         {selected && selected.type === "text" && (
-          <View style={styles.editRow}>
-            <TextInput
-              ref={inputRef}
-              style={styles.textInput}
-              value={selected.text}
-              onChangeText={onTextChange}
-              placeholder="Type your caption"
-              placeholderTextColor="#64748b"
-              autoCorrect={false}
-              returnKeyType="done"
-              blurOnSubmit
-            />
-            <Pressable style={styles.deleteBtn} onPress={deleteSelected}>
-              <Text style={styles.deleteText}>Delete</Text>
-            </Pressable>
-          </View>
+          <TextStylePanel
+            layer={selected}
+            inputRef={inputRef}
+            onTextChange={onTextChange}
+            onChange={(patch) => updateLayer(selected.id, patch)}
+            onDelete={deleteSelected}
+          />
         )}
 
         {selected && selected.type === "image" && (
@@ -447,6 +470,179 @@ const StickerSheet = ({ state, onPick, onClose }: StickerSheetProps) => (
   </Modal>
 );
 
+interface TextStylePanelProps {
+  layer: EditorTextLayer;
+  inputRef: React.RefObject<TextInput>;
+  onTextChange: (text: string) => void;
+  onChange: (patch: Partial<EditorTextLayer>) => void;
+  onDelete: () => void;
+}
+
+const TextStylePanel = ({
+  layer,
+  inputRef,
+  onTextChange,
+  onChange,
+  onDelete,
+}: TextStylePanelProps) => (
+  <View style={styles.panel}>
+    <View style={styles.editRow}>
+      <TextInput
+        ref={inputRef}
+        style={styles.textInput}
+        value={layer.text}
+        onChangeText={onTextChange}
+        placeholder="Type your caption"
+        placeholderTextColor="#64748b"
+        autoCorrect={false}
+        returnKeyType="done"
+        blurOnSubmit
+      />
+      <Pressable style={styles.deleteBtn} onPress={onDelete}>
+        <Text style={styles.deleteText}>Delete</Text>
+      </Pressable>
+    </View>
+    <ScrollView
+      style={styles.panelScroll}
+      keyboardShouldPersistTaps="handled"
+      nestedScrollEnabled
+    >
+      <View style={styles.ctrlRow}>
+        <Text style={styles.ctrlLabel}>Font</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.pillRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {FONT_OPTIONS.map((f) => {
+            const on = layer.fontFamily === f.key;
+            return (
+              <Pressable
+                key={f.key}
+                onPress={() => onChange({ fontFamily: f.key })}
+                style={[styles.fontPill, on && styles.fontPillOn]}
+              >
+                <Text
+                  style={[styles.fontPillText, fontStyle(f.key), on && styles.fontPillTextOn]}
+                >
+                  {f.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <ColorRow
+        label="Text colour"
+        value={layer.color}
+        defaultColor={DEFAULT_TEXT_COLOR}
+        onChange={(c) => onChange({ color: c ?? DEFAULT_TEXT_COLOR })}
+      />
+      <ColorRow
+        label="Background"
+        optional
+        value={layer.background}
+        defaultColor={DEFAULT_BACKGROUND_COLOR}
+        onChange={(c) => onChange({ background: c })}
+      />
+      <ColorRow
+        label="Stroke"
+        optional
+        value={layer.strokeColor}
+        defaultColor={DEFAULT_STROKE_COLOR}
+        onChange={(c) =>
+          onChange({
+            strokeColor: c,
+            strokeWidthRatio: c ? layer.strokeWidthRatio ?? DEFAULT_STROKE_WIDTH_RATIO : undefined,
+          })
+        }
+      />
+      <ColorRow
+        label="Shadow"
+        optional
+        value={layer.shadowColor}
+        defaultColor={DEFAULT_SHADOW_COLOR}
+        onChange={(c) =>
+          onChange({
+            shadowColor: c,
+            shadowOffsetRatio: c ? layer.shadowOffsetRatio ?? DEFAULT_SHADOW_OFFSET_RATIO : undefined,
+          })
+        }
+      />
+    </ScrollView>
+  </View>
+);
+
+interface ColorRowProps {
+  label: string;
+  value?: string;
+  defaultColor: string;
+  /** Optional rows can be toggled off entirely (value ⇒ undefined). */
+  optional?: boolean;
+  onChange: (color: string | undefined) => void;
+}
+
+const ColorRow = ({ label, value, defaultColor, optional, onChange }: ColorRowProps) => {
+  const [hex, setHex] = useState("");
+  const enabled = value !== undefined;
+  const submitHex = () => {
+    const n = normalizeHex(hex);
+    if (n) onChange(n);
+    setHex("");
+  };
+  return (
+    <View style={styles.ctrlRow}>
+      <View style={styles.ctrlHead}>
+        <Text style={styles.ctrlLabel}>{label}</Text>
+        {optional && (
+          <Pressable
+            onPress={() => onChange(enabled ? undefined : defaultColor)}
+            style={[styles.togglePill, enabled && styles.togglePillOn]}
+          >
+            <Text style={[styles.toggleText, enabled && styles.toggleTextOn]}>
+              {enabled ? "On" : "Off"}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+      {(!optional || enabled) && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.swatchRow}
+          keyboardShouldPersistTaps="handled"
+        >
+          {COLOR_SWATCHES.map((c) => (
+            <Pressable
+              key={c}
+              onPress={() => onChange(c)}
+              style={[
+                styles.swatch,
+                { backgroundColor: c },
+                value?.toLowerCase() === c && styles.swatchActive,
+              ]}
+            />
+          ))}
+          <TextInput
+            style={styles.hexInput}
+            value={hex}
+            onChangeText={setHex}
+            onSubmitEditing={submitHex}
+            onBlur={submitHex}
+            placeholder="#hex"
+            placeholderTextColor="#475569"
+            autoCapitalize="none"
+            autoCorrect={false}
+            returnKeyType="done"
+          />
+        </ScrollView>
+      )}
+    </View>
+  );
+};
+
 interface LayerViewProps {
   layer: EditorLayer;
   canvasW: number;
@@ -528,9 +724,16 @@ const LayerView = ({
 
   return (
     <GestureDetector gesture={combined}>
-      <Animated.View style={[styles.layer, style]}>
+      <Animated.View
+        style={[layer.type === "text" ? styles.textAnchor : styles.layer, style]}
+      >
         {layer.type === "text" ? (
-          <TextLayerContent layer={layer} canvasH={canvasH} selected={selected} />
+          <TextLayerContent
+            layer={layer}
+            canvasW={canvasW}
+            canvasH={canvasH}
+            selected={selected}
+          />
         ) : (
           <ImageLayerContent layer={layer} canvasW={canvasW} selected={selected} />
         )}
@@ -539,12 +742,23 @@ const LayerView = ({
   );
 };
 
+// Eight directions used to fake a glyph outline in the preview by drawing
+// offset copies behind the fill text. ffmpeg renders a true `borderw` outline,
+// so this is an approximation — close for thin strokes, not pixel-exact.
+const STROKE_OFFSETS: [number, number][] = [
+  [-1, -1], [0, -1], [1, -1],
+  [-1, 0], [1, 0],
+  [-1, 1], [0, 1], [1, 1],
+];
+
 const TextLayerContent = ({
   layer,
+  canvasW,
   canvasH,
   selected,
 }: {
   layer: EditorTextLayer;
+  canvasW: number;
   canvasH: number;
   selected: boolean;
 }) => {
@@ -552,24 +766,96 @@ const TextLayerContent = ({
     () => Math.max(10, layer.fontSizeRatio * canvasH),
     [canvasH, layer.fontSizeRatio]
   );
-  const displayText = layer.text.length > 0 ? layer.text : "Tap to type";
   const isPlaceholder = layer.text.length === 0;
+  const displayText = isPlaceholder ? "Tap to type" : layer.text;
+  const fill = isPlaceholder ? "#cbd5e1" : layer.color;
+  const strokeW =
+    !isPlaceholder && layer.strokeColor
+      ? Math.max(1, (layer.strokeWidthRatio ?? DEFAULT_STROKE_WIDTH_RATIO) * fontSizePx)
+      : 0;
+  const shadowOff =
+    !isPlaceholder && layer.shadowColor
+      ? (layer.shadowOffsetRatio ?? DEFAULT_SHADOW_OFFSET_RATIO) * fontSizePx
+      : 0;
+  const maxWidth = Math.max(120, (canvasW || CANVAS_W) * 0.86);
+  // Measured height of the (absolutely-positioned) caption, used to recentre it
+  // on the layer's anchor point. The box is taken out of flow so its text
+  // measures against its own content rather than the 0×0 anchor (which on the
+  // New Architecture collapses an in-flow child to zero height).
+  const [boxH, setBoxH] = useState(0);
+
+  const baseText: TextStyle = {
+    ...fontStyle(layer.fontFamily),
+    fontSize: fontSizePx,
+    textAlign: "center",
+  };
+
   return (
-    <Text
+    <View
       style={[
-        styles.layerText,
-        {
-          fontSize: fontSizePx,
-          color: isPlaceholder ? "#cbd5e1" : layer.color,
-          fontWeight: layer.fontFamily === "system-bold" ? "800" : "400",
-          opacity: isPlaceholder ? 0.8 : 1,
-        },
-        selected && styles.layerSelected,
+        styles.captionBox,
+        { position: "absolute", width: maxWidth, left: -maxWidth / 2, top: -boxH / 2 },
       ]}
-      numberOfLines={3}
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        if (h && Math.abs(h - boxH) > 0.5) setBoxH(h);
+      }}
     >
-      {displayText}
-    </Text>
+      <View
+        style={[
+          layer.background
+            ? {
+                backgroundColor: layer.background,
+                paddingHorizontal: fontSizePx * 0.28,
+                paddingVertical: fontSizePx * 0.12,
+                borderRadius: fontSizePx * 0.18,
+              }
+            : null,
+          selected && styles.layerSelected,
+        ]}
+      >
+        <View>
+        {shadowOff > 0 && (
+          <Text
+            numberOfLines={3}
+            style={[
+              baseText,
+              styles.copyAbs,
+              {
+                color: layer.shadowColor,
+                transform: [{ translateX: shadowOff }, { translateY: shadowOff }],
+              },
+            ]}
+          >
+            {displayText}
+          </Text>
+        )}
+        {strokeW > 0 &&
+          STROKE_OFFSETS.map(([ox, oy], i) => (
+            <Text
+              key={i}
+              numberOfLines={3}
+              style={[
+                baseText,
+                styles.copyAbs,
+                {
+                  color: layer.strokeColor,
+                  transform: [{ translateX: ox * strokeW }, { translateY: oy * strokeW }],
+                },
+              ]}
+            >
+              {displayText}
+            </Text>
+          ))}
+        <Text
+          numberOfLines={3}
+          style={[baseText, { color: fill, opacity: isPlaceholder ? 0.8 : 1 }]}
+        >
+          {displayText}
+        </Text>
+        </View>
+      </View>
+    </View>
   );
 };
 
@@ -612,14 +898,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  layerText: {
-    textAlign: "center",
-    textShadowColor: "rgba(0,0,0,0.6)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-    marginLeft: -140,
-    marginTop: -30,
-    width: 280,
+  // Zero-size anchor: a centred child sits exactly on the layer's x/y point,
+  // so the caption box can hug its (variable-width) content.
+  textAnchor: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  captionBox: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  copyAbs: {
+    ...StyleSheet.absoluteFillObject,
   },
   layerSelected: {
     borderWidth: 1,
@@ -628,15 +923,95 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 4,
   },
+  panel: {
+    backgroundColor: "#0f172a",
+    borderTopColor: "#1e293b",
+    borderTopWidth: 1,
+  },
+  panelScroll: {
+    maxHeight: 210,
+  },
   editRow: {
     flexDirection: "row",
     gap: 8,
     alignItems: "center",
     backgroundColor: "#0f172a",
-    padding: 12,
-    borderTopColor: "#1e293b",
-    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 8,
   },
+  ctrlRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  ctrlHead: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  ctrlLabel: {
+    color: "#94a3b8",
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  pillRow: {
+    gap: 8,
+    paddingRight: 12,
+    alignItems: "center",
+  },
+  fontPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#334155",
+    backgroundColor: "#1e293b",
+  },
+  fontPillOn: { backgroundColor: "#3b82f6", borderColor: "#3b82f6" },
+  fontPillText: { color: "#cbd5e1", fontSize: 15 },
+  fontPillTextOn: { color: "#fff" },
+  swatchRow: {
+    gap: 8,
+    paddingRight: 12,
+    alignItems: "center",
+  },
+  swatch: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#475569",
+  },
+  swatchActive: {
+    borderWidth: 3,
+    borderColor: "#fff",
+  },
+  hexInput: {
+    minWidth: 78,
+    backgroundColor: "#1e293b",
+    borderColor: "#334155",
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    color: "#e2e8f0",
+    fontSize: 14,
+  },
+  togglePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#334155",
+    backgroundColor: "#1e293b",
+    marginBottom: 6,
+  },
+  togglePillOn: { backgroundColor: "#16a34a", borderColor: "#16a34a" },
+  toggleText: { color: "#94a3b8", fontSize: 12, fontWeight: "600" },
+  toggleTextOn: { color: "#fff" },
   selectedHint: { flex: 1, color: "#94a3b8", fontSize: 13 },
   textInput: {
     flex: 1,

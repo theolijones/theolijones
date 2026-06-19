@@ -14,6 +14,9 @@ export interface Me {
   userId: string;
   role: "admin" | "user";
   sportsbetUsername?: string;
+  talentId?: string;
+  talentName?: string;
+  talentInitials?: string;
 }
 
 interface AuthValue {

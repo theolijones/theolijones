@@ -54,4 +54,10 @@ RUN npm install --omit=dev
 COPY --from=build /build/dist/index.js ${LAMBDA_TASK_ROOT}/
 COPY render-worker/src/segment.py ${LAMBDA_TASK_ROOT}/segment.py
 
+# Bundled caption fonts (Inter, Oswald, Anton, Bebas Neue, Permanent Marker).
+# The mobile app ships the identical TTFs so the editor preview matches the
+# rendered video. Referenced via FONTS_DIR in index.ts.
+COPY render-worker/fonts ${LAMBDA_TASK_ROOT}/fonts
+ENV FONTS_DIR=${LAMBDA_TASK_ROOT}/fonts
+
 CMD ["index.handler"]
