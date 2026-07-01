@@ -8,216 +8,234 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --panel: #0c0c10;
-    --panel-2: #141419;
-    --border: #3a3a48;
-    --ink: #f3eede;
-    --amber: #ffb43f;
-    --green: #46d160;
-    --yellow: #ffcf3f;
-    --red: #ff4653;
-    --coin: #ffcb45;
-    --dim: #9a94b0;
+  :root{
+    --panel:#0c0c10; --border:#3a3a48; --ink:#f3eede; --amber:#ffb43f;
+    --green:#46d160; --yellow:#ffcf3f; --red:#ff4653; --coin:#ffcb45; --dim:#9a94b0;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
-  body {
-    font-family: "VT323", monospace;
-    background: #050408;
-    color: var(--ink);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    padding: 16px;
-    overflow: hidden;
-  }
-  .pixel { font-family: "Press Start 2P", monospace; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:"VT323",monospace;background:#050408;color:var(--ink);
+    display:flex;align-items:center;justify-content:center;min-height:100vh;padding:16px;overflow:hidden}
+  .pixel{font-family:"Press Start 2P",monospace}
 
-  /* ===== STAGE (16:9) ===== */
-  #stage {
-    position: relative;
-    width: min(100vw - 32px, 177.7vh);
-    aspect-ratio: 16 / 9;
-    background: #0a0a12;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.7), inset 0 0 0 2px rgba(255,255,255,0.04);
-    user-select: none;
-  }
+  #stage{position:relative;width:min(100vw - 32px,177.7vh);aspect-ratio:16/9;background:#0a0a12;
+    border-radius:10px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.7),inset 0 0 0 2px rgba(255,255,255,.04);user-select:none}
 
-  /* scene layer */
-  .scene {
-    position: absolute; inset: 0;
-    background-size: cover; background-position: center;
-    transition: opacity 1s ease, transform 8s ease;
-  }
-  .scene.zoom { transform: scale(1.08); }
-  .scene-office     { background: linear-gradient(180deg,#3a2c14,#1c140a), radial-gradient(circle at 50% 30%, #5a4420, #1a1109); }
-  .scene-golf       { background: linear-gradient(180deg,#8fd06a 0%, #6bb04a 45%, #3f7d59 100%); }
-  .scene-restaurant { background: linear-gradient(180deg,#2a1a12,#120a08), radial-gradient(circle at 50% 40%, #4a2f1f, #140b07); }
-  .scene-yacht      { background: linear-gradient(180deg,#173a5e 0%, #2f6f9e 45%, #6fb6d6 100%); }
-  .scene-img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity .8s ease; }
-  .scene-img.loaded { opacity:1; }
-  .vignette { position:absolute; inset:0; pointer-events:none;
-    background: radial-gradient(ellipse at 50% 55%, transparent 40%, rgba(0,0,0,0.55) 100%); }
+  /* Scene */
+  .scene{position:absolute;inset:0;background-size:cover;background-position:center;
+    transition:opacity 1s ease,transform 10s ease;transform-origin:50% 60%}
+  .scene.zoom{transform:scale(1.09)}
+  .vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 55%,transparent 38%,rgba(0,0,0,.55) 100%)}
+  #stage.shake{animation:screenshake .5s ease}
+  @keyframes screenshake{0%,100%{transform:translate(0,0)}15%{transform:translate(-8px,4px)}
+    30%{transform:translate(7px,-5px)}45%{transform:translate(-6px,-3px)}60%{transform:translate(5px,4px)}75%{transform:translate(-3px,2px)}}
+  #stage.flash-good::after,#stage.flash-bad::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:15;animation:flash .5s ease}
+  #stage.flash-good::after{background:radial-gradient(circle,rgba(70,209,96,.28),transparent 65%)}
+  #stage.flash-bad::after{background:radial-gradient(circle,rgba(255,70,83,.3),transparent 65%)}
+  @keyframes flash{0%{opacity:1}100%{opacity:0}}
 
-  /* Gian portrait */
-  .gian {
-    position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
-    height: 92%; display:flex; align-items:flex-end; justify-content:center;
-    transition: transform .35s ease, filter .3s ease;
-  }
-  .gian img { height:100%; object-fit:contain; display:none; filter: drop-shadow(0 10px 30px rgba(0,0,0,.6)); }
-  .gian img.loaded { display:block; }
-  .gian-emoji { font-size: clamp(80px, 22vh, 220px); line-height:1;
-    filter: drop-shadow(0 8px 20px rgba(0,0,0,.7)); transition: transform .3s; }
-  .gian.pop { animation: pop .4s ease; }
-  @keyframes pop { 0%{transform:translateX(-50%) scale(1)} 40%{transform:translateX(-50%) scale(1.06) rotate(-2deg)} 100%{transform:translateX(-50%) scale(1)} }
-  .gian.shake { animation: shake .45s ease; }
-  @keyframes shake { 0%,100%{transform:translateX(-50%)} 20%{transform:translateX(-54%)} 40%{transform:translateX(-46%)} 60%{transform:translateX(-52%)} 80%{transform:translateX(-48%)} }
+  /* Gian character wrapper */
+  #gian{position:absolute;left:50%;bottom:-2%;transform:translateX(-50%);height:96%;z-index:3;
+    transition:transform .35s ease}
+  #gian svg{height:100%;width:auto;display:block;filter:drop-shadow(0 14px 30px rgba(0,0,0,.55))}
+  #gian.pop{animation:gpop .45s ease}
+  @keyframes gpop{0%{transform:translateX(-50%) scale(1)}40%{transform:translateX(-50%) scale(1.04) rotate(-1.5deg)}100%{transform:translateX(-50%) scale(1)}}
+  #gian.shake{animation:gshake .5s ease}
+  @keyframes gshake{0%,100%{transform:translateX(-50%)}20%{transform:translateX(-54%) rotate(-2deg)}
+    40%{transform:translateX(-47%) rotate(2deg)}60%{transform:translateX(-52%) rotate(-1deg)}80%{transform:translateX(-49%)}}
 
-  /* ===== HUD PANELS ===== */
-  .panel {
-    background: linear-gradient(180deg, rgba(12,12,16,.94), rgba(8,8,12,.94));
-    border: 2px solid var(--border);
-    border-radius: 10px;
-    box-shadow: 0 6px 18px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.03);
-  }
-  .hud-tl { position:absolute; top: 3%; left: 2.5%; display:flex; flex-direction:column; gap:8px; z-index:5; }
-  .nameplate { padding: 10px 14px; }
-  .nameplate .nm { font-family:"Press Start 2P"; font-size: clamp(9px,1.4vh,15px); letter-spacing:.5px; }
-  .nameplate .role { font-family:"Press Start 2P"; font-size: clamp(6px,1vh,10px); color: var(--amber); margin-top:6px; }
-  .subrow { display:flex; gap:8px; }
-  .chip { padding: 8px 12px; display:flex; align-items:center; gap:8px; }
-  .chip .lbl { font-family:"Press Start 2P"; font-size: clamp(6px,.95vh,9px); color: var(--dim); }
-  .chip .val { font-family:"Press Start 2P"; font-size: clamp(8px,1.25vh,13px); color: var(--green); }
-  .coin { width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #ffe89a, var(--coin));
-    color:#7a5300;font-family:"Press Start 2P";font-size:9px;display:flex;align-items:center;justify-content:center;
-    box-shadow:0 0 0 2px #b8860b; }
-  .coin-val { font-family:"Press Start 2P"; font-size: clamp(9px,1.4vh,15px); color: var(--coin); }
+  /* --- facial animation --- */
+  #eyelidL,#eyelidR{transform-box:fill-box;transform-origin:center;transform:scaleY(0);animation:blink 5.2s infinite}
+  #eyelidR{animation-delay:.06s}
+  @keyframes blink{0%,94%,100%{transform:scaleY(0)}96%,98%{transform:scaleY(1)}}
+  .browL,.browR{transform-box:fill-box;transform-origin:center;transition:transform .35s ease}
+  /* mouths hidden; one shown per mood */
+  .mouth{display:none}
+  #gsvg[data-mood="high"] #mouthSmileBig{display:block}
+  #gsvg[data-mood="high"] .browL{transform:translateY(-5px) rotate(-4deg)}
+  #gsvg[data-mood="high"] .browR{transform:translateY(-5px) rotate(4deg)}
+  #gsvg[data-mood="mid"]  #mouthNeutral{display:block}
+  #gsvg[data-mood="low"]  #mouthFrown{display:block}
+  #gsvg[data-mood="low"] .browL{transform:translate(6px,4px) rotate(16deg)}
+  #gsvg[data-mood="low"] .browR{transform:translate(-6px,4px) rotate(-16deg)}
+  #gsvg[data-mood="shock"] #mouthShock{display:block}
+  #gsvg[data-mood="shock"] .browL{transform:translateY(-12px) rotate(-8deg)}
+  #gsvg[data-mood="shock"] .browR{transform:translateY(-12px) rotate(8deg)}
+  /* talking: bob the jaw */
+  #jaw{transform-box:fill-box;transform-origin:top center}
+  #gsvg.talking #jaw{animation:talk .28s infinite}
+  @keyframes talk{0%,100%{transform:translateY(0) scaleY(1)}50%{transform:translateY(3px) scaleY(1.08)}}
+  #gsvg.talking #mouthNeutral,#gsvg.talking #mouthSmileBig,#gsvg.talking #mouthFrown{opacity:.15}
+  #gsvg.talking #mouthTalk{display:block}
+  .mouth#mouthTalk{display:none}
+  #sweat{opacity:0;transition:opacity .3s}
+  #gsvg[data-mood="low"] #sweat,#gsvg[data-mood="shock"] #sweat{opacity:1;animation:sweat 2.4s infinite}
+  @keyframes sweat{0%{transform:translateY(0);opacity:0}20%{opacity:.9}100%{transform:translateY(60px);opacity:0}}
 
-  /* Happiness panel top-right */
-  .hud-tr { position:absolute; top: 3%; right: 2.5%; width: clamp(150px, 22%, 260px); padding: 12px; text-align:center; z-index:5; }
-  .hud-tr .title { font-family:"Press Start 2P"; font-size: clamp(9px,1.5vh,15px); letter-spacing:1px; }
-  .hface { width: clamp(60px,11vh,110px); height: clamp(60px,11vh,110px); margin: 10px auto 6px;
-    border-radius: 14px; display:flex; align-items:center; justify-content:center;
-    font-size: clamp(38px,7vh,72px); background: var(--green);
-    box-shadow: 0 0 22px rgba(70,209,96,.55), inset 0 0 0 3px rgba(0,0,0,.25);
-    transition: background .5s, box-shadow .5s; }
-  .hstatus { font-family:"Press Start 2P"; font-size: clamp(7px,1.15vh,12px); color: var(--green); transition: color .4s; }
-  .hbar { display:flex; gap:2px; margin-top:10px; height: clamp(12px,2vh,20px); }
-  .seg { flex:1; border-radius:2px; background:#26262e; transition: background .3s; }
-  .marker { width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
-    border-top:8px solid var(--ink); margin: 4px 0 0 auto; transition: margin-left .6s ease; }
+  /* HUD */
+  .panel{background:linear-gradient(180deg,rgba(12,12,16,.94),rgba(8,8,12,.94));border:2px solid var(--border);
+    border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,.5),inset 0 0 0 1px rgba(255,255,255,.03)}
+  .hud-tl{position:absolute;top:3%;left:2.5%;display:flex;flex-direction:column;gap:8px;z-index:6}
+  .nameplate{padding:10px 14px}
+  .nameplate .nm{font-family:"Press Start 2P";font-size:clamp(9px,1.4vh,15px);letter-spacing:.5px}
+  .nameplate .role{font-family:"Press Start 2P";font-size:clamp(6px,1vh,10px);color:var(--amber);margin-top:6px}
+  .chip{padding:8px 12px;display:flex;align-items:center;gap:8px}
+  .chip .lbl{font-family:"Press Start 2P";font-size:clamp(6px,.95vh,9px);color:var(--dim)}
+  .chip .val{font-family:"Press Start 2P";font-size:clamp(8px,1.25vh,13px);color:var(--green)}
+  .coin{width:18px;height:18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffe89a,var(--coin));
+    color:#7a5300;font-family:"Press Start 2P";font-size:9px;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #b8860b}
+  .coin-val{font-family:"Press Start 2P";font-size:clamp(9px,1.4vh,15px);color:var(--coin)}
 
-  /* ===== DIALOGUE + MENU ===== */
-  .prompt {
-    position:absolute; left: 2.5%; right: 2.5%; bottom: 3%;
-    padding: 14px 18px; min-height: 12%; z-index:6;
-    font-size: clamp(16px, 3.1vh, 30px); line-height:1.25; color: var(--ink);
-  }
-  .prompt .cursor::after { content:"▶"; color: var(--amber); margin-right:10px; }
-  .prompt .blink { animation: blink 1s steps(1) infinite; color: var(--amber); }
-  @keyframes blink { 50% { opacity: 0; } }
+  .hud-tr{position:absolute;top:3%;right:2.5%;width:clamp(150px,22%,260px);padding:12px;text-align:center;z-index:6}
+  .hud-tr .title{font-family:"Press Start 2P";font-size:clamp(9px,1.5vh,15px);letter-spacing:1px}
+  .hface{width:clamp(60px,11vh,110px);height:clamp(60px,11vh,110px);margin:10px auto 6px;border-radius:14px;
+    display:flex;align-items:center;justify-content:center;font-size:clamp(38px,7vh,72px);background:var(--green);
+    box-shadow:0 0 22px rgba(70,209,96,.55),inset 0 0 0 3px rgba(0,0,0,.25);transition:background .5s,box-shadow .5s}
+  .hstatus{font-family:"Press Start 2P";font-size:clamp(7px,1.15vh,12px);color:var(--green);transition:color .4s}
+  .hbar{display:flex;gap:2px;margin-top:10px;height:clamp(12px,2vh,20px)}
+  .seg{flex:1;border-radius:2px;background:#26262e;transition:background .3s}
+  .marker{width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
+    border-top:8px solid var(--ink);margin:4px 0 0;transition:margin-left .6s ease}
 
-  .menu {
-    position:absolute; left: 2.5%; bottom: 20%;
-    min-width: clamp(200px, 26%, 320px); padding: 10px 6px; z-index:7;
-  }
-  .menu .mtitle { font-family:"Press Start 2P"; font-size:8px; color:var(--dim); padding: 2px 12px 8px; }
-  .mitem {
-    display:flex; align-items:center; gap:10px; padding: 9px 12px; cursor:pointer;
-    font-size: clamp(15px,2.7vh,26px); color: var(--ink); border-radius:6px;
-    border: 2px solid transparent;
-  }
-  .mitem .cur { width: 16px; color: var(--amber); opacity:0; font-size:.85em; }
-  .mitem.sel { background: rgba(255,180,63,.14); border-color: rgba(255,180,63,.55); }
-  .mitem.sel .cur { opacity:1; }
-  .mitem .ico { font-size:1.05em; }
-  .mitem.disabled { opacity:.4; cursor:default; }
-  .mitem .hint { margin-left:auto; font-size:.62em; color:var(--dim); }
+  .prompt{position:absolute;left:2.5%;right:2.5%;bottom:3%;padding:14px 18px;min-height:12%;z-index:7;
+    font-size:clamp(16px,3.1vh,30px);line-height:1.25;color:var(--ink)}
+  .prompt .blink{animation:cblink 1s steps(1) infinite;color:var(--amber)}
+  @keyframes cblink{50%{opacity:0}}
 
-  /* Location title card */
-  .titlecard {
-    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
-    z-index:8; text-align:center; gap:10px; pointer-events:none; opacity:0; transition:opacity .5s;
-    background: rgba(0,0,0,.35);
-  }
-  .titlecard.show { opacity:1; }
-  .titlecard .lv { font-family:"Press Start 2P"; font-size: clamp(9px,1.6vh,15px); color:var(--amber); letter-spacing:2px; }
-  .titlecard .loc { font-family:"Press Start 2P"; font-size: clamp(16px,3.4vh,34px); text-shadow: 0 4px 0 rgba(0,0,0,.6); }
-  .titlecard .mood { font-size: clamp(16px,2.6vh,26px); color:var(--dim); }
+  .menu{position:absolute;left:2.5%;bottom:20%;min-width:clamp(200px,26%,320px);padding:10px 6px;z-index:8}
+  .menu .mtitle{font-family:"Press Start 2P";font-size:8px;color:var(--dim);padding:2px 12px 8px}
+  .mitem{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer;
+    font-size:clamp(15px,2.7vh,26px);color:var(--ink);border-radius:6px;border:2px solid transparent}
+  .mitem .cur{width:16px;color:var(--amber);opacity:0;font-size:.85em}
+  .mitem.sel{background:rgba(255,180,63,.14);border-color:rgba(255,180,63,.55)}
+  .mitem.sel .cur{opacity:1}
+  .mitem .ico{font-size:1.05em}
+  .mitem.disabled{opacity:.4;cursor:default}
+  .mitem .hint{margin-left:auto;font-size:.62em;color:var(--dim)}
 
-  /* ===== OVERLAY SCREENS ===== */
-  .overlay {
-    position:absolute; inset:0; z-index:20; display:flex; align-items:center; justify-content:center;
-    background: radial-gradient(circle at 50% 20%, #2a1c4a, #0a0713 75%);
-    padding: 5%;
-  }
-  .overlay .box { max-width: 680px; text-align:center; }
-  .overlay h1 { font-family:"Press Start 2P"; font-size: clamp(18px,4vh,40px); line-height:1.3;
-    background: linear-gradient(90deg,#ffd447,#ff8ab5); -webkit-background-clip:text; background-clip:text; color:transparent;
-    margin-bottom: 14px; }
-  .overlay h2 { font-family:"Press Start 2P"; font-size: clamp(14px,2.6vh,26px); margin-bottom:10px; }
-  .overlay p { font-size: clamp(17px,2.6vh,26px); color: var(--dim); line-height:1.4; margin:8px 0; }
-  .overlay p b { color: var(--ink); }
-  .rules { list-style:none; text-align:left; display:inline-block; margin: 10px auto; }
-  .rules li { font-size: clamp(16px,2.4vh,24px); padding:5px 0; color:var(--dim); }
-  .big { font-size: clamp(48px,12vh,110px); margin: 6px 0 4px; }
-  input#country {
-    width:100%; max-width:360px; margin: 6px auto 4px; display:block;
-    font-family:"VT323"; font-size: clamp(18px,2.6vh,26px); text-align:center;
-    padding: 10px; border-radius:8px; border:2px solid var(--border); background:#0c0c14; color:var(--ink);
-  }
-  .btn {
-    font-family:"Press Start 2P"; font-size: clamp(10px,1.7vh,16px);
-    margin-top: 16px; padding: 14px 22px; border:none; border-radius:10px; cursor:pointer;
-    background: linear-gradient(90deg,#ffd447,#ff8ab5); color:#2d1b4e;
-    box-shadow: 0 5px 0 #b06a3a; transition: transform .1s, box-shadow .1s;
-  }
-  .btn:active { transform: translateY(4px); box-shadow: 0 1px 0 #b06a3a; }
-  .scorecard { text-align:left; display:inline-block; margin-top:16px; }
-  .scorecard .row { display:flex; justify-content:space-between; gap:30px; font-size: clamp(15px,2.3vh,22px); padding:6px 0; color:var(--dim); }
-  .scorecard .row b { color: var(--ink); }
-  .disclaimer { font-size: clamp(13px,1.8vh,18px); color:var(--dim); opacity:.6; margin-top:14px; }
-  .hidden { display:none !important; }
+  .titlecard{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    z-index:9;text-align:center;gap:10px;pointer-events:none;opacity:0;transition:opacity .5s;background:rgba(0,0,0,.35)}
+  .titlecard.show{opacity:1}
+  .titlecard .lv{font-family:"Press Start 2P";font-size:clamp(9px,1.6vh,15px);color:var(--amber);letter-spacing:2px}
+  .titlecard .loc{font-family:"Press Start 2P";font-size:clamp(16px,3.4vh,34px);text-shadow:0 4px 0 rgba(0,0,0,.6)}
+  .titlecard .mood{font-size:clamp(16px,2.6vh,26px);color:var(--dim)}
+
+  .overlay{position:absolute;inset:0;z-index:20;display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(circle at 50% 20%,#2a1c4a,#0a0713 75%);padding:5%}
+  .overlay .box{max-width:680px;text-align:center}
+  .overlay h1{font-family:"Press Start 2P";font-size:clamp(18px,4vh,40px);line-height:1.3;
+    background:linear-gradient(90deg,#ffd447,#ff8ab5);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:14px}
+  .overlay h2{font-family:"Press Start 2P";font-size:clamp(14px,2.6vh,26px);margin-bottom:10px}
+  .overlay p{font-size:clamp(17px,2.6vh,26px);color:var(--dim);line-height:1.4;margin:8px 0}
+  .overlay p b{color:var(--ink)}
+  .rules{list-style:none;text-align:left;display:inline-block;margin:10px auto}
+  .rules li{font-size:clamp(16px,2.4vh,24px);padding:5px 0;color:var(--dim)}
+  .big{font-size:clamp(48px,12vh,110px);margin:6px 0 4px}
+  input#country{width:100%;max-width:360px;margin:6px auto 4px;display:block;font-family:"VT323";
+    font-size:clamp(18px,2.6vh,26px);text-align:center;padding:10px;border-radius:8px;border:2px solid var(--border);background:#0c0c14;color:var(--ink)}
+  .btn{font-family:"Press Start 2P";font-size:clamp(10px,1.7vh,16px);margin-top:16px;padding:14px 22px;border:none;
+    border-radius:10px;cursor:pointer;background:linear-gradient(90deg,#ffd447,#ff8ab5);color:#2d1b4e;
+    box-shadow:0 5px 0 #b06a3a;transition:transform .1s,box-shadow .1s}
+  .btn:active{transform:translateY(4px);box-shadow:0 1px 0 #b06a3a}
+  .scorecard .row{display:flex;justify-content:space-between;gap:30px;font-size:clamp(15px,2.3vh,22px);padding:6px 0;color:var(--dim)}
+  .scorecard .row b{color:var(--ink)}
+  .disclaimer{font-size:clamp(13px,1.8vh,18px);color:var(--dim);opacity:.6;margin-top:14px}
+  .hidden{display:none !important}
 </style>
 </head>
 <body>
 <div id="stage">
 
-  <!-- Scene layers -->
-  <div class="scene" id="scene"><img class="scene-img" id="scene-img" alt="" /></div>
+  <div class="scene" id="scene"></div>
   <div class="vignette"></div>
 
-  <!-- Gian -->
-  <div class="gian" id="gian">
-    <img id="gian-img" alt="Gian" />
-    <div class="gian-emoji" id="gian-emoji">🙂</div>
+  <!-- ===== GIAN — animated inline SVG ===== -->
+  <div id="gian">
+    <svg id="gsvg" data-mood="mid" viewBox="0 0 600 820" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="skin" cx="45%" cy="34%" r="72%">
+          <stop offset="0%" stop-color="#f4c9a4"/><stop offset="70%" stop-color="#e6b087"/><stop offset="100%" stop-color="#cf9166"/>
+        </radialGradient>
+        <linearGradient id="jacket" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2a3350"/><stop offset="100%" stop-color="#141a2e"/>
+        </linearGradient>
+        <linearGradient id="tie" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3a5ec0"/><stop offset="100%" stop-color="#1e326e"/>
+        </linearGradient>
+      </defs>
+
+      <!-- shoulders / jacket -->
+      <path d="M60 820 Q52 560 150 498 Q232 456 300 456 Q368 456 450 498 Q548 560 540 820 Z" fill="url(#jacket)"/>
+      <path d="M300 456 Q248 468 218 520 L300 706 L382 520 Q352 468 300 456 Z" fill="#f3f1ea"/>
+      <path d="M300 466 l-27 26 27 40 27 -40 Z" fill="url(#tie)"/>
+      <path d="M282 540 l18 250 18 -250 -18 -24 Z" fill="url(#tie)"/>
+      <path d="M300 458 L214 520 L250 648 L300 500 Z" fill="#20273f"/>
+      <path d="M300 458 L386 520 L350 648 L300 500 Z" fill="#20273f"/>
+      <!-- pocket square -->
+      <path d="M430 560 l34 -8 -6 34 z" fill="#ffd1e0"/>
+
+      <!-- neck -->
+      <path d="M254 428 q46 42 92 0 l0 62 q-46 30 -92 0 Z" fill="#d89e73"/>
+
+      <!-- head -->
+      <ellipse cx="300" cy="268" rx="150" ry="176" fill="url(#skin)"/>
+      <ellipse cx="150" cy="284" rx="26" ry="40" fill="#e0a97e"/>
+      <ellipse cx="450" cy="284" rx="26" ry="40" fill="#e0a97e"/>
+      <path d="M300 92 q122 10 147 176 q10 100 -46 168 q82 -122 30 -244 Q402 88 300 92 Z" fill="#d89a6e" opacity="0.45"/>
+      <!-- subtle bald head shine -->
+      <ellipse cx="258" cy="150" rx="52" ry="30" fill="#ffe6cc" opacity="0.35"/>
+
+      <!-- eyebrows -->
+      <rect class="browL" x="210" y="236" width="72" height="13" rx="6" fill="#6f4a2e"/>
+      <rect class="browR" x="318" y="236" width="72" height="13" rx="6" fill="#6f4a2e"/>
+
+      <!-- eyes -->
+      <ellipse cx="246" cy="270" rx="27" ry="18" fill="#fff"/>
+      <ellipse cx="354" cy="270" rx="27" ry="18" fill="#fff"/>
+      <circle cx="250" cy="272" r="9.5" fill="#3a2a1a"/>
+      <circle cx="357" cy="272" r="9.5" fill="#3a2a1a"/>
+      <circle cx="253" cy="268" r="3" fill="#fff"/>
+      <circle cx="360" cy="268" r="3" fill="#fff"/>
+      <!-- eyelids for blink -->
+      <rect id="eyelidL" x="219" y="252" width="54" height="20" rx="9" fill="#e6b087"/>
+      <rect id="eyelidR" x="327" y="252" width="54" height="20" rx="9" fill="#e6b087"/>
+
+      <!-- nose -->
+      <path d="M300 282 q-15 42 -21 58 q11 14 42 0 q-6 -16 -21 -58 Z" fill="#d89a6e"/>
+      <ellipse cx="288" cy="338" rx="7" ry="5" fill="#c98a5e"/>
+      <ellipse cx="312" cy="338" rx="7" ry="5" fill="#c98a5e"/>
+
+      <!-- cheeks -->
+      <ellipse cx="224" cy="332" rx="27" ry="16" fill="#e8a982" opacity="0.5"/>
+      <ellipse cx="376" cy="332" rx="27" ry="16" fill="#e8a982" opacity="0.5"/>
+
+      <!-- MOUTHS (jaw group so talking bobs them) -->
+      <g id="jaw">
+        <path id="mouthNeutral"  class="mouth" d="M256 374 q44 12 88 0" stroke="#8a4f3a" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <path id="mouthSmileBig" class="mouth" d="M248 366 q52 60 104 0 q-52 26 -104 0 Z" fill="#7a3a2c"/>
+        <path id="mouthFrown"    class="mouth" d="M256 392 q44 -30 88 0" stroke="#8a4f3a" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <ellipse id="mouthShock" class="mouth" cx="300" cy="386" rx="26" ry="32" fill="#5a241c"/>
+        <ellipse id="mouthTalk"  class="mouth" cx="300" cy="380" rx="30" ry="18" fill="#6a2c22"/>
+      </g>
+
+      <!-- sweat drop for stress -->
+      <circle id="sweat" cx="430" cy="220" r="10" fill="#8fd0ff" opacity="0"/>
+    </svg>
   </div>
 
-  <!-- Title card -->
   <div class="titlecard" id="titlecard">
     <div class="lv" id="tc-lv">MEETING 1</div>
     <div class="loc" id="tc-loc">THE GRAND OFFICE</div>
     <div class="mood" id="tc-mood"></div>
   </div>
 
-  <!-- HUD top-left -->
-  <div class="hud-tl" id="hud">
-    <div class="panel nameplate">
-      <div class="nm">GIAN</div>
-      <div class="role">WORLD CUP KINGMAKER</div>
-    </div>
-    <div class="subrow">
-      <div class="panel chip"><span class="lbl">MEETING</span><span class="val" id="rel-val">1</span></div>
-    </div>
+  <div class="hud-tl">
+    <div class="panel nameplate"><div class="nm">GIAN</div><div class="role">WORLD CUP KINGMAKER</div></div>
+    <div class="panel chip"><span class="lbl">MEETING</span><span class="val" id="rel-val">1 / 4</span></div>
     <div class="panel chip"><span class="coin">F</span><span class="coin-val" id="cash">10,000</span></div>
   </div>
 
-  <!-- HUD top-right: Happiness -->
   <div class="panel hud-tr">
     <div class="title">HAPPINESS</div>
     <div class="hface" id="hface">🙂</div>
@@ -226,292 +244,223 @@
     <div class="marker" id="marker"></div>
   </div>
 
-  <!-- Command menu -->
-  <div class="panel menu hidden" id="menu">
-    <div class="mtitle" id="menu-country">COMMANDS</div>
-  </div>
+  <div class="panel menu hidden" id="menu"></div>
 
-  <!-- Dialogue prompt -->
   <div class="panel prompt" id="prompt"><span id="prompt-text"></span><span class="blink" id="prompt-caret">▮</span></div>
 
-  <!-- START overlay -->
-  <div class="overlay" id="start">
-    <div class="box">
-      <div class="big">🤵</div>
-      <h1>CHARM GIAN</h1>
-      <p>One man decides the <b>2030 World Cup host</b>. You're a country out to charm him across four meetings. Keep his <b>Happiness</b> high to win the bid.</p>
-      <ul class="rules">
-        <li>💬 <b>Compliment</b> — flattery &amp; sweet-talk</li>
-        <li>🏟️ <b>Pitch Plans</b> — dazzling stadiums &amp; visions</li>
-        <li>🥂 <b>Hospitality</b> — banquets &amp; VIP treatment</li>
-        <li>💸 <b>Slip an Envelope</b> — a cheeky "incentive" (parody!)</li>
-      </ul>
-      <p>🃏 His <b>mood shifts every venue</b> — read the room. Overdo the envelopes and he'll be <b>offended</b>.</p>
-      <input id="country" type="text" maxlength="22" placeholder="Your country, e.g. Australia 🦘" />
-      <button class="btn" id="start-btn">▶ START THE BID</button>
-      <div class="disclaimer">Parody game. No real people, wagering, or money. "Envelopes" is a joke tactic.</div>
-    </div>
-  </div>
+  <!-- START -->
+  <div class="overlay" id="start"><div class="box">
+    <div class="big">🤵</div>
+    <h1>CHARM GIAN</h1>
+    <p>One man decides the <b>2030 World Cup host</b>. You're a country out to charm him across four meetings. Keep his <b>Happiness</b> high to win the bid.</p>
+    <ul class="rules">
+      <li>💬 <b>Compliment</b> — flattery &amp; sweet-talk</li>
+      <li>🏟️ <b>Pitch Plans</b> — dazzling stadiums &amp; visions</li>
+      <li>🥂 <b>Hospitality</b> — banquets &amp; VIP treatment</li>
+      <li>💸 <b>Slip an Envelope</b> — a cheeky "incentive" (parody!)</li>
+    </ul>
+    <p>🃏 His <b>mood shifts every venue</b> — read the room. Overdo the envelopes and he'll be <b>offended</b>.</p>
+    <input id="country" type="text" maxlength="22" placeholder="Your country, e.g. Australia 🦘" />
+    <button class="btn" id="start-btn">▶ START THE BID</button>
+    <div class="disclaimer">Parody game. No real people, wagering, or money. "Envelopes" is a joke tactic.</div>
+  </div></div>
 
-  <!-- END overlay -->
-  <div class="overlay hidden" id="end">
-    <div class="box">
-      <div class="big" id="end-emoji">🏆</div>
-      <h2 id="end-title">RESULT</h2>
-      <p id="end-text"></p>
-      <div class="scorecard panel" style="padding:16px 22px">
-        <div class="row"><span>Meetings cleared</span><b id="sc-cleared">—</b></div>
-        <div class="row"><span>Final Happiness</span><b id="sc-meter">—</b></div>
-        <div class="row"><span>Bankroll left</span><b id="sc-cash">—</b></div>
-        <div class="row"><span>Verdict</span><b id="sc-verdict">—</b></div>
-      </div>
-      <br />
-      <button class="btn" id="restart-btn">▶ PLAY AGAIN</button>
-    </div>
-  </div>
+  <!-- END -->
+  <div class="overlay hidden" id="end"><div class="box">
+    <div class="big" id="end-emoji">🏆</div>
+    <h2 id="end-title">RESULT</h2>
+    <p id="end-text"></p>
+    <div class="scorecard panel" style="padding:16px 22px;text-align:left;display:inline-block;margin-top:16px">
+      <div class="row"><span>Meetings cleared</span><b id="sc-cleared">—</b></div>
+      <div class="row"><span>Final Happiness</span><b id="sc-meter">—</b></div>
+      <div class="row"><span>Bankroll left</span><b id="sc-cash">—</b></div>
+      <div class="row"><span>Verdict</span><b id="sc-verdict">—</b></div>
+    </div><br/>
+    <button class="btn" id="restart-btn">▶ PLAY AGAIN</button>
+  </div></div>
 
 </div>
 
 <script>
 (() => {
   "use strict";
-  const $ = (id) => document.getElementById(id);
+  const $=(id)=>document.getElementById(id);
 
-  // ---------- Tactics ----------
-  const TACTICS = [
-    { key:"compliments", ico:"💬", label:"COMPLIMENT" },
-    { key:"plans",       ico:"🏟️", label:"PITCH PLANS" },
-    { key:"hospitality", ico:"🥂", label:"HOSPITALITY" },
-    { key:"dollars",     ico:"💸", label:"SLIP ENVELOPE" },
+  const TACTICS=[
+    {key:"compliments",ico:"💬",label:"COMPLIMENT"},
+    {key:"plans",ico:"🏟️",label:"PITCH PLANS"},
+    {key:"hospitality",ico:"🥂",label:"HOSPITALITY"},
+    {key:"dollars",ico:"💸",label:"SLIP ENVELOPE"},
   ];
 
-  // ---------- Levels (4 venues) ----------
-  const LEVELS = [
-    {
-      loc:"THE GRAND OFFICE", scene:"scene-office", img:"assets/scene-office.jpg",
-      mood:"Warm & Welcoming", intro:"My friend… let's get down to business.",
-      moodHint:"He's in fine spirits — and loves a little flattery.",
-      w:{ compliments:16, plans:11, hospitality:12, dollars:-14 },
-      lines:{
-        compliments:"\"Oh, stop it — well, don't!\" Gian beams, thoroughly charmed.",
-        plans:"\"Solid stadiums. A serious bid.\" He nods, approving.",
-        hospitality:"\"Espresso, and a warm welcome? You understand me.\"",
-        dollars:"\"We just met. Put that envelope AWAY.\" He recoils.",
-      }
-    },
-    {
-      loc:"THE GOLF COURSE", scene:"scene-golf", img:"assets/scene-golf.jpg",
-      mood:"Relaxed & Sporting", intro:"My friend… let's get down to business.",
-      moodHint:"Fresh air, good swing. Talk hospitality and the good life.",
-      w:{ compliments:9, plans:8, hospitality:18, dollars:-16 },
-      lines:{
-        compliments:"\"Ha! Save the speeches for the podium.\" Mildly pleased.",
-        plans:"\"Business on the back nine? Fine, it's a decent plan.\"",
-        hospitality:"\"A round, a caddie, a cold drink waiting — now THIS is a bid!\"",
-        dollars:"\"Cash on the fairway? Have some class.\" He frowns.",
-      }
-    },
-    {
-      loc:"THE MOODY RESTAURANT", scene:"scene-restaurant", img:"assets/scene-restaurant.jpg",
-      mood:"Suspicious & Guarded", intro:"My friend… let's get down to business.",
-      moodHint:"Rivals have been whispering. He's wary of being played tonight.",
-      w:{ compliments:-6, plans:15, hospitality:11, dollars:-22 },
-      lines:{
-        compliments:"\"Laying it on thick over dinner, aren't we?\" Suspicious.",
-        plans:"\"At least the plans are honest work.\" A rare, real nod.",
-        hospitality:"\"The banquet's superb, I'll grant you that.\" Warming up.",
-        dollars:"\"An envelope? THAT'S what I was warned about!\" Furious.",
-      }
-    },
-    {
-      loc:"THE SUPERYACHT", scene:"scene-yacht", img:"assets/scene-yacht.jpg",
-      mood:"The Final Decision", intro:"My friend… let's get down to business.",
-      moodHint:"Everything's on the line. He wants the whole package — no funny business.",
-      w:{ compliments:13, plans:16, hospitality:15, dollars:-28 },
-      lines:{
-        compliments:"\"Kind words on the big day. Noted, and appreciated.\"",
-        plans:"\"A legacy-defining vision. I'm genuinely impressed.\"",
-        hospitality:"\"Treated like royalty to the very end. Magnificent.\"",
-        dollars:"\"On DECISION DAY?! Off my yacht — NOW!\" Catastrophic.",
-      }
-    },
+  const LEVELS=[
+    {loc:"THE GRAND OFFICE",scene:"assets/scene-office.svg",mood:"Warm & Welcoming",
+     intro:"My friend… let's get down to business.",
+     hint:"He's in fine spirits — and loves a little flattery.",
+     w:{compliments:16,plans:11,hospitality:12,dollars:-14},
+     lines:{compliments:"\"Oh, stop it — well, don't!\" Gian beams, thoroughly charmed.",
+       plans:"\"Solid stadiums. A serious bid.\" He nods, approving.",
+       hospitality:"\"Espresso, and a warm welcome? You understand me.\"",
+       dollars:"\"We just met. Put that envelope AWAY.\" He recoils."}},
+    {loc:"THE GOLF COURSE",scene:"assets/scene-golf.svg",mood:"Relaxed & Sporting",
+     intro:"My friend… let's get down to business.",
+     hint:"Fresh air, good swing. Talk hospitality and the good life.",
+     w:{compliments:9,plans:8,hospitality:18,dollars:-16},
+     lines:{compliments:"\"Ha! Save the speeches for the podium.\" Mildly pleased.",
+       plans:"\"Business on the back nine? Fine, a decent plan.\"",
+       hospitality:"\"A round, a caddie, a cold drink waiting — now THIS is a bid!\"",
+       dollars:"\"Cash on the fairway? Have some class.\" He frowns."}},
+    {loc:"THE MOODY RESTAURANT",scene:"assets/scene-restaurant.svg",mood:"Suspicious & Guarded",
+     intro:"My friend… let's get down to business.",
+     hint:"Rivals have been whispering. He's wary of being played tonight.",
+     w:{compliments:-6,plans:15,hospitality:11,dollars:-22},
+     lines:{compliments:"\"Laying it on thick over dinner, aren't we?\" Suspicious.",
+       plans:"\"At least the plans are honest work.\" A rare, real nod.",
+       hospitality:"\"The banquet's superb, I'll grant you that.\" Warming up.",
+       dollars:"\"An envelope? THAT'S what I was warned about!\" Furious."}},
+    {loc:"THE SUPERYACHT",scene:"assets/scene-yacht.svg",mood:"The Final Decision",
+     intro:"My friend… let's get down to business.",
+     hint:"Everything's on the line. He wants the whole package — no funny business.",
+     w:{compliments:13,plans:16,hospitality:15,dollars:-28},
+     lines:{compliments:"\"Kind words on the big day. Noted, and appreciated.\"",
+       plans:"\"A legacy-defining vision. I'm genuinely impressed.\"",
+       hospitality:"\"Treated like royalty to the very end. Magnificent.\"",
+       dollars:"\"On DECISION DAY?! Off my yacht — NOW!\" Catastrophic."}},
   ];
 
-  const ENVELOPE_COST = 2500;
+  const ENVELOPE_COST=2500;
+  const S={meter:50,level:0,cleared:0,cash:10000,country:"YOUR COUNTRY",sel:0,busy:false,await:null};
 
-  // ---------- State ----------
-  const S = { meter:50, level:0, cleared:0, cash:10000, country:"YOUR COUNTRY", sel:0, busy:false };
-
-  // ---------- Helpers ----------
   function zone(m){
-    if(m>=67) return {k:"high", face:"😄", box:"😄", status:"VERY HAPPY!", col:"var(--green)", glow:"rgba(70,209,96,.55)"};
-    if(m>=34) return {k:"mid",  face:"🙂", box:"😐", status:"INTRIGUED",   col:"var(--yellow)",glow:"rgba(255,207,63,.5)"};
-    return               {k:"low",  face:"😠", box:"☹️", status:"UNHAPPY!",    col:"var(--red)",   glow:"rgba(255,70,83,.55)"};
+    if(m>=67) return {k:"high",box:"😄",status:"VERY HAPPY!",col:"var(--green)",glow:"rgba(70,209,96,.55)"};
+    if(m>=34) return {k:"mid", box:"😐",status:"INTRIGUED",  col:"var(--yellow)",glow:"rgba(255,207,63,.5)"};
+    return           {k:"low", box:"☹️",status:"UNHAPPY!",   col:"var(--red)",   glow:"rgba(255,70,83,.55)"};
   }
-  function fmt(n){ return n.toLocaleString("en-US"); }
-
-  function loadImage(imgEl, src){
-    imgEl.classList.remove("loaded");
-    imgEl.onload = () => imgEl.classList.add("loaded");
-    imgEl.onerror = () => imgEl.classList.remove("loaded");
-    imgEl.src = src;
-  }
+  const fmt=(n)=>n.toLocaleString("en-US");
+  const setMood=(m)=>{$("gsvg").setAttribute("data-mood",m);};
 
   function updateHUD(){
-    const z = zone(S.meter);
-    // happiness face + status
-    const hf = $("hface");
-    hf.textContent = z.box;
-    hf.style.background = z.col;
-    hf.style.boxShadow = `0 0 22px ${z.glow}, inset 0 0 0 3px rgba(0,0,0,.25)`;
-    const st = $("hstatus"); st.textContent = z.status; st.style.color = z.col;
-    // segmented bar
-    const bar = $("hbar"); const filled = Math.round(S.meter/5);
-    [...bar.children].forEach((s,i)=>{
-      s.style.background = i < filled ? z.col : "#26262e";
-    });
-    $("marker").style.marginLeft = `calc(${Math.max(0,Math.min(100,S.meter))}% - 6px)`;
-    // Gian expression
-    if(!$("gian-img").classList.contains("loaded")) $("gian-emoji").textContent = z.face;
-    // chips
-    $("rel-val").textContent = (S.level+1) + " / " + LEVELS.length;
-    $("cash").textContent = fmt(S.cash);
+    const z=zone(S.meter);
+    const hf=$("hface");hf.textContent=z.box;hf.style.background=z.col;
+    hf.style.boxShadow=`0 0 22px ${z.glow}, inset 0 0 0 3px rgba(0,0,0,.25)`;
+    const st=$("hstatus");st.textContent=z.status;st.style.color=z.col;
+    const bar=$("hbar");const filled=Math.round(S.meter/5);
+    [...bar.children].forEach((s,i)=>s.style.background=i<filled?z.col:"#26262e");
+    $("marker").style.marginLeft=`calc(${Math.max(0,Math.min(100,S.meter))}% - 6px)`;
+    $("rel-val").textContent=(S.level+1)+" / "+LEVELS.length;
+    $("cash").textContent=fmt(S.cash);
+    setMood(z.k);
   }
+  function buildBar(){const bar=$("hbar");bar.innerHTML="";for(let i=0;i<20;i++){const d=document.createElement("div");d.className="seg";bar.appendChild(d);}}
 
-  function buildBar(){
-    const bar = $("hbar"); bar.innerHTML="";
-    for(let i=0;i<20;i++){ const d=document.createElement("div"); d.className="seg"; bar.appendChild(d); }
-  }
-
-  // ---------- Typewriter ----------
   let typeTimer=null;
-  function type(text, cb){
+  function type(text,cb){
     clearInterval(typeTimer);
-    const el=$("prompt-text"); el.textContent="";
+    const el=$("prompt-text");el.textContent="";
     $("prompt-caret").style.display="inline";
+    $("gsvg").classList.add("talking");
     let i=0;
     typeTimer=setInterval(()=>{
-      el.textContent = text.slice(0,++i);
-      if(i>=text.length){ clearInterval(typeTimer); if(cb) setTimeout(cb, 250); }
-    }, 22);
-  }
-  function skipType(text, cb){
-    clearInterval(typeTimer);
-    $("prompt-text").textContent = text;
-    if(cb) cb();
+      el.textContent=text.slice(0,++i);
+      if(i>=text.length){clearInterval(typeTimer);$("gsvg").classList.remove("talking");if(cb)setTimeout(cb,240);}
+    },22);
   }
 
-  // ---------- Menu ----------
   function buildMenu(){
     const m=$("menu");
-    m.innerHTML = `<div class="mtitle" id="menu-country">${S.country} — WHAT WILL YOU DO?</div>`;
+    m.innerHTML=`<div class="mtitle">${S.country} — WHAT WILL YOU DO?</div>`;
     TACTICS.forEach((t,i)=>{
-      const canPay = t.key!=="dollars" || S.cash>=ENVELOPE_COST;
+      const canPay=t.key!=="dollars"||S.cash>=ENVELOPE_COST;
       const row=document.createElement("div");
       row.className="mitem"+(i===S.sel?" sel":"")+(canPay?"":" disabled");
       row.innerHTML=`<span class="cur">▶</span><span class="ico">${t.ico}</span><span>${t.label}</span>`+
         (t.key==="dollars"?`<span class="hint">−F${fmt(ENVELOPE_COST)}</span>`:``);
-      row.onmouseenter=()=>{ if(!S.busy){ S.sel=i; refreshSel(); } };
-      row.onclick=()=>{ if(!S.busy && canPay) choose(i); };
+      row.onmouseenter=()=>{if(!S.busy){S.sel=i;refreshSel();}};
+      row.onclick=()=>{if(!S.busy&&canPay)choose(i);};
       m.appendChild(row);
     });
   }
-  function refreshSel(){
-    [...$("menu").querySelectorAll(".mitem")].forEach((r,i)=>r.classList.toggle("sel", i===S.sel));
-  }
-  function showMenu(v){ $("menu").classList.toggle("hidden", !v); }
+  const refreshSel=()=>[...$("menu").querySelectorAll(".mitem")].forEach((r,i)=>r.classList.toggle("sel",i===S.sel));
+  const showMenu=(v)=>$("menu").classList.toggle("hidden",!v);
 
-  // ---------- Flow ----------
   function startLevel(){
-    S.busy=true; S.sel=0;
+    S.busy=true;S.sel=0;
     const lv=LEVELS[S.level];
-    // scene
     const sc=$("scene");
-    sc.className="scene "+lv.scene;
-    loadImage($("scene-img"), lv.img);
-    loadImage($("gian-img"), "assets/gian-"+zone(S.meter).k+".png");
-    // trigger slow zoom
-    sc.classList.remove("zoom"); void sc.offsetWidth; setTimeout(()=>sc.classList.add("zoom"),50);
-    showMenu(false);
-    updateHUD();
-
-    // title card
-    $("tc-lv").textContent = "MEETING "+(S.level+1)+" / "+LEVELS.length;
-    $("tc-loc").textContent = lv.loc;
-    $("tc-mood").textContent = "Gian's mood: "+lv.mood;
-    const tc=$("titlecard"); tc.classList.add("show");
-    $("prompt-text").textContent=""; $("prompt-caret").style.display="none";
+    sc.style.opacity="0";
+    setTimeout(()=>{sc.style.backgroundImage=`url('${lv.scene}')`;sc.style.opacity="1";
+      sc.classList.remove("zoom");void sc.offsetWidth;setTimeout(()=>sc.classList.add("zoom"),60);},300);
+    showMenu(false);updateHUD();
+    $("tc-lv").textContent="MEETING "+(S.level+1)+" / "+LEVELS.length;
+    $("tc-loc").textContent=lv.loc;
+    $("tc-mood").textContent="Gian's mood: "+lv.mood;
+    const tc=$("titlecard");tc.classList.add("show");
+    $("prompt-text").textContent="";$("prompt-caret").style.display="none";
 
     setTimeout(()=>{
       tc.classList.remove("show");
-      $("gian").classList.add("pop");
-      setTimeout(()=>$("gian").classList.remove("pop"),400);
-      // Gian's opening line, then mood hint, then menu
-      type(lv.intro, ()=>{
+      $("gian").classList.add("pop");setTimeout(()=>$("gian").classList.remove("pop"),450);
+      type(lv.intro,()=>{
         setTimeout(()=>{
-          type(lv.moodHint, ()=>{
+          type(lv.hint,()=>{
             $("prompt-caret").style.display="none";
-            $("prompt-text").innerHTML = `<span style="color:var(--amber)">▶</span> ${lv.moodHint} <span class="blink">Choose your charm…</span>`;
-            buildMenu(); showMenu(true); S.busy=false;
+            $("prompt-text").innerHTML=`<span style="color:var(--amber)">▶</span> ${lv.hint} <span class="blink">Choose your charm…</span>`;
+            buildMenu();showMenu(true);S.busy=false;
           });
-        }, 700);
+        },650);
       });
-    }, 2100);
+    },2100);
   }
 
   function choose(i){
-    if(S.busy) return;
-    S.busy=true; S.sel=i;
-    const t=TACTICS[i], lv=LEVELS[S.level];
-    let delta=lv.w[t.key];
-    delta=Math.round(delta*(1+S.level*0.08)); // rising difficulty
-    if(t.key==="dollars") S.cash=Math.max(0,S.cash-ENVELOPE_COST);
-
-    const before=S.meter;
+    if(S.busy)return;
+    S.busy=true;S.sel=i;
+    const t=TACTICS[i],lv=LEVELS[S.level];
+    let delta=Math.round(lv.w[t.key]*(1+S.level*0.08));
+    if(t.key==="dollars")S.cash=Math.max(0,S.cash-ENVELOPE_COST);
     S.meter=Math.max(0,Math.min(100,S.meter+delta));
     const good=delta>=0;
     showMenu(false);
 
-    // reaction
-    const g=$("gian");
+    const g=$("gian"),stg=$("stage");
     g.classList.add(good?"pop":"shake");
-    setTimeout(()=>g.classList.remove("pop","shake"),450);
-    loadImage($("gian-img"),"assets/gian-"+zone(S.meter).k+".png");
+    setTimeout(()=>g.classList.remove("pop","shake"),500);
+    stg.classList.add(good?"flash-good":"flash-bad");
+    setTimeout(()=>stg.classList.remove("flash-good","flash-bad"),500);
     updateHUD();
+    // offended reaction overrides the meter-based face for the "envelope" blunder
+    if(t.key==="dollars"&&!good){ setMood("shock"); stg.classList.add("shake"); setTimeout(()=>stg.classList.remove("shake"),500); }
 
     const sign=delta>=0?"+":"";
-    const tail = ` [Happiness ${sign}${delta}]`;
-    type(lv.lines[t.key], ()=>{
+    type(lv.lines[t.key],()=>{
       $("prompt-caret").style.display="none";
-      $("prompt-text").innerHTML =
-        `<span style="color:var(--amber)">▶</span> ${lv.lines[t.key]} <b style="color:${good?'var(--green)':'var(--red)'}">${good?'😄':'😤'}${tail}</b> `+
+      $("prompt-text").innerHTML=`<span style="color:var(--amber)">▶</span> ${lv.lines[t.key]} `+
+        `<b style="color:${good?'var(--green)':'var(--red)'}">${good?'😄':'😤'} [Happiness ${sign}${delta}]</b> `+
         `<span class="blink" style="color:var(--amber)">▶ press SPACE / click</span>`;
-      S.busy=false; S.await="next";
-      $("stage").onclick=advance;
+      S.busy=false;S.await="next";$("stage").onclick=advance;
     });
   }
 
   function advance(){
-    if(S.await!=="next") return;
-    S.await=null; $("stage").onclick=null;
-    if(zone(S.meter).k!=="low") S.cleared++;
+    if(S.await!=="next")return;
+    S.await=null;$("stage").onclick=null;
+    if(zone(S.meter).k!=="low")S.cleared++;
     S.level++;
-    if(S.level>=LEVELS.length) return endGame();
+    if(S.level>=LEVELS.length)return endGame();
     startLevel();
   }
 
   function endGame(){
-    const m=Math.round(S.meter), z=zone(m);
+    const m=Math.round(S.meter),z=zone(m);
+    setMood(z.k);
     let emoji,title,text,verdict;
-    if(m>=67){ emoji="🏆🎉"; title=S.country+" WINS THE BID!";
-      text=`Gian is <b>delighted</b>. He's named <b>${S.country}</b> host of the 2030 World Cup. The crowd erupts!`; verdict="WINNER 🥇"; }
-    else if(m>=34){ emoji="🥈"; title="SO CLOSE!";
-      text=`Gian is intrigued but not quite sold. <b>${S.country}</b> finishes a proud runner-up. One more banquet…`; verdict="RUNNER-UP"; }
-    else { emoji="😬"; title="BID REJECTED";
-      text=`Gian looks thoroughly unimpressed. <b>${S.country}</b>'s bid collapses. Fewer envelopes next time?`; verdict="ELIMINATED"; }
-    $("end-emoji").textContent=emoji;
-    $("end-title").textContent=title;
-    $("end-text").innerHTML=text;
+    if(m>=67){emoji="🏆🎉";title=S.country+" WINS THE BID!";
+      text=`Gian is <b>delighted</b>. He's named <b>${S.country}</b> host of the 2030 World Cup. The crowd erupts!`;verdict="WINNER 🥇";}
+    else if(m>=34){emoji="🥈";title="SO CLOSE!";
+      text=`Gian is intrigued but not quite sold. <b>${S.country}</b> finishes a proud runner-up. One more banquet…`;verdict="RUNNER-UP";}
+    else{emoji="😬";title="BID REJECTED";
+      text=`Gian looks thoroughly unimpressed. <b>${S.country}</b>'s bid collapses. Fewer envelopes next time?`;verdict="ELIMINATED";}
+    $("end-emoji").textContent=emoji;$("end-title").textContent=title;$("end-text").innerHTML=text;
     $("sc-cleared").textContent=S.cleared+" / "+LEVELS.length;
     $("sc-meter").textContent=m+" — "+z.status;
     $("sc-cash").textContent="F "+fmt(S.cash);
@@ -522,26 +471,24 @@
   function begin(){
     const v=$("country").value.trim();
     S.country=(v||"YOUR COUNTRY").toUpperCase();
-    S.meter=50; S.level=0; S.cleared=0; S.cash=10000; S.await=null;
-    $("start").classList.add("hidden"); $("end").classList.add("hidden");
+    S.meter=50;S.level=0;S.cleared=0;S.cash=10000;S.await=null;
+    $("start").classList.add("hidden");$("end").classList.add("hidden");
     startLevel();
   }
 
-  // ---------- Input ----------
   document.addEventListener("keydown",(e)=>{
-    if(!$("start").classList.contains("hidden")){ if(e.key==="Enter") begin(); return; }
-    if(S.await==="next" && (e.key===" "||e.key==="Enter")){ e.preventDefault(); advance(); return; }
-    if(S.busy || $("menu").classList.contains("hidden")) return;
-    if(e.key==="ArrowDown"||e.key==="ArrowRight"){ S.sel=(S.sel+1)%TACTICS.length; refreshSel(); }
-    else if(e.key==="ArrowUp"||e.key==="ArrowLeft"){ S.sel=(S.sel+TACTICS.length-1)%TACTICS.length; refreshSel(); }
-    else if(e.key==="Enter"||e.key===" "){ e.preventDefault();
-      const canPay=TACTICS[S.sel].key!=="dollars"||S.cash>=ENVELOPE_COST; if(canPay) choose(S.sel); }
+    if(!$("start").classList.contains("hidden")){if(e.key==="Enter")begin();return;}
+    if(S.await==="next"&&(e.key===" "||e.key==="Enter")){e.preventDefault();advance();return;}
+    if(S.busy||$("menu").classList.contains("hidden"))return;
+    if(e.key==="ArrowDown"||e.key==="ArrowRight"){S.sel=(S.sel+1)%TACTICS.length;refreshSel();}
+    else if(e.key==="ArrowUp"||e.key==="ArrowLeft"){S.sel=(S.sel+TACTICS.length-1)%TACTICS.length;refreshSel();}
+    else if(e.key==="Enter"||e.key===" "){e.preventDefault();
+      const canPay=TACTICS[S.sel].key!=="dollars"||S.cash>=ENVELOPE_COST;if(canPay)choose(S.sel);}
   });
 
   $("start-btn").onclick=begin;
-  $("restart-btn").onclick=()=>{ $("end").classList.add("hidden"); $("start").classList.remove("hidden"); };
-
-  buildBar(); updateHUD();
+  $("restart-btn").onclick=()=>{$("end").classList.add("hidden");$("start").classList.remove("hidden");};
+  buildBar();updateHUD();
 })();
 </script>
 </body>
