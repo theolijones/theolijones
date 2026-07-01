@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="gSky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#5aa4e0"/><stop offset="60%" stop-color="#a9d4f0"/><stop offset="100%" stop-color="#dff0e0"/>
+    </linearGradient>
+    <linearGradient id="gFair" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#7cc65a"/><stop offset="100%" stop-color="#3f8f4a"/>
+    </linearGradient>
+    <linearGradient id="gGreen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9ada6a"/><stop offset="100%" stop-color="#5aac4f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#gSky)"/>
+  <!-- sun -->
+  <circle cx="1320" cy="150" r="70" fill="#fff6cf" opacity="0.9"/>
+  <circle cx="1320" cy="150" r="120" fill="#fff6cf" opacity="0.25"/>
+  <!-- clouds -->
+  <g fill="#ffffff" opacity="0.9">
+    <ellipse cx="300" cy="150" rx="90" ry="34"/><ellipse cx="370" cy="135" rx="70" ry="30"/><ellipse cx="240" cy="140" rx="60" ry="26"/>
+    <ellipse cx="820" cy="110" rx="80" ry="28"/><ellipse cx="880" cy="100" rx="60" ry="24"/>
+    <ellipse cx="1080" cy="200" rx="70" ry="26" opacity="0.8"/>
+  </g>
+  <!-- distant tree line + hills -->
+  <path d="M0 430 Q400 360 800 420 T1600 400 L1600 520 L0 520 Z" fill="#4e8f57"/>
+  <g fill="#2f6b3c" opacity="0.9">
+    <ellipse cx="120" cy="410" rx="70" ry="60"/><ellipse cx="230" cy="420" rx="90" ry="66"/>
+    <ellipse cx="1380" cy="405" rx="80" ry="60"/><ellipse cx="1500" cy="415" rx="90" ry="66"/>
+    <ellipse cx="640" cy="405" rx="60" ry="48"/>
+  </g>
+  <!-- rolling fairway -->
+  <path d="M0 520 Q800 440 1600 520 L1600 900 L0 900 Z" fill="url(#gFair)"/>
+  <path d="M0 640 Q800 560 1600 640" fill="none" stroke="#68b055" stroke-width="26" opacity="0.5"/>
+  <!-- putting green -->
+  <ellipse cx="800" cy="760" rx="520" ry="130" fill="url(#gGreen)"/>
+  <ellipse cx="800" cy="748" rx="470" ry="104" fill="#a6e070" opacity="0.5"/>
+  <!-- sand bunker -->
+  <ellipse cx="300" cy="700" rx="150" ry="46" fill="#efdca6"/>
+  <ellipse cx="300" cy="695" rx="120" ry="34" fill="#f7ecc8"/>
+  <!-- flag on the green -->
+  <g transform="translate(1040,560)">
+    <rect x="-3" y="0" width="6" height="210" fill="#e8e8e8"/>
+    <path d="M3 4 L120 34 L3 64 Z" fill="#e23b3b"/>
+    <ellipse cx="0" cy="212" rx="26" ry="8" fill="#2f6b3c" opacity="0.5"/>
+    <circle cx="0" cy="208" r="7" fill="#111"/>
+  </g>
+  <!-- golf ball foreground -->
+  <circle cx="560" cy="835" r="26" fill="#fff"/>
+  <circle cx="560" cy="835" r="26" fill="none" stroke="#cfcfcf" stroke-width="2"/>
+  <g fill="#e2e2e2"><circle cx="552" cy="828" r="3"/><circle cx="566" cy="826" r="3"/><circle cx="560" cy="840" r="3"/><circle cx="550" cy="842" r="3"/><circle cx="570" cy="838" r="3"/></g>
+  <rect width="1600" height="900" fill="#000" opacity="0.05"/>
+</svg>
