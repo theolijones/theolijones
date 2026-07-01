@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>🤵 Charm Gian — Win the 2030 World Cup Bid</title>
+<style>
+  :root {
+    --bg1: #1a0b2e;
+    --bg2: #2d1b4e;
+    --card: rgba(255,255,255,0.06);
+    --card-border: rgba(255,255,255,0.12);
+    --gold: #ffd447;
+    --green: #38d66b;
+    --yellow: #ffcf3f;
+    --red: #ff5470;
+    --text: #f3ecff;
+    --muted: #b9a9d9;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: radial-gradient(circle at 30% 0%, var(--bg2), var(--bg1) 70%);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 24px 16px 60px;
+  }
+  .app { width: 100%; max-width: 720px; }
+  h1 {
+    font-size: 2rem;
+    text-align: center;
+    letter-spacing: 0.5px;
+    background: linear-gradient(90deg, #ffd447, #ff8ab5);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 4px;
+  }
+  .subtitle { text-align: center; color: var(--muted); margin-bottom: 20px; font-size: 0.95rem; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 18px;
+    padding: 22px;
+    backdrop-filter: blur(6px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+  }
+
+  /* HUD */
+  .hud { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .pill {
+    background: var(--card);
+    border: 1px solid var(--card-border);
+    border-radius: 999px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 600;
+  }
+  .pill span { color: var(--gold); }
+
+  /* Meter */
+  .meter-wrap { margin: 10px 0 18px; }
+  .meter-label { display: flex; justify-content: space-between; font-size: 0.85rem; color: var(--muted); margin-bottom: 6px; }
+  .meter-track {
+    height: 26px;
+    background: rgba(0,0,0,0.35);
+    border-radius: 999px;
+    overflow: hidden;
+    border: 1px solid var(--card-border);
+    position: relative;
+  }
+  .meter-fill {
+    height: 100%;
+    width: 50%;
+    border-radius: 999px;
+    transition: width 0.7s cubic-bezier(.2,.9,.3,1.4), background 0.5s;
+    background: var(--yellow);
+  }
+  .meter-marks { position: absolute; inset: 0; pointer-events: none; }
+  .meter-marks::before, .meter-marks::after {
+    content: ""; position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,0.18);
+  }
+  .meter-marks::before { left: 33.33%; }
+  .meter-marks::after  { left: 66.66%; }
+
+  /* Gian */
+  .gian {
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(0,0,0,0.2);
+    border-radius: 14px; padding: 14px 16px; margin-bottom: 16px;
+    border: 1px solid var(--card-border);
+  }
+  .gian-face { font-size: 3rem; line-height: 1; transition: transform 0.3s; }
+  .gian-face.pop { transform: scale(1.35) rotate(-6deg); }
+  .gian-info h3 { font-size: 1.05rem; margin-bottom: 2px; }
+  .gian-mood { color: var(--gold); font-weight: 600; font-size: 0.95rem; }
+  .gian-desc { color: var(--muted); font-size: 0.85rem; margin-top: 3px; }
+
+  /* Tactics */
+  .tactics { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .tactic {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    background: linear-gradient(160deg, rgba(255,255,255,0.09), rgba(255,255,255,0.03));
+    border: 1px solid var(--card-border);
+    border-radius: 14px; padding: 14px 16px;
+    cursor: pointer; text-align: left; color: var(--text);
+    transition: transform 0.12s, border-color 0.2s, box-shadow 0.2s;
+    font-family: inherit;
+  }
+  .tactic:hover:not(:disabled) { transform: translateY(-3px); border-color: var(--gold); box-shadow: 0 8px 20px rgba(0,0,0,0.3); }
+  .tactic:active:not(:disabled) { transform: translateY(0); }
+  .tactic:disabled { opacity: 0.5; cursor: default; }
+  .tactic .t-emoji { font-size: 1.6rem; }
+  .tactic .t-name { font-weight: 700; font-size: 1rem; }
+  .tactic .t-desc { color: var(--muted); font-size: 0.8rem; }
+
+  /* Feedback */
+  .feedback {
+    margin-top: 16px; padding: 14px 16px; border-radius: 12px;
+    font-size: 0.95rem; min-height: 20px; opacity: 0; transition: opacity 0.3s;
+    border: 1px solid transparent;
+  }
+  .feedback.show { opacity: 1; }
+  .feedback.good { background: rgba(56,214,107,0.14); border-color: rgba(56,214,107,0.4); }
+  .feedback.bad  { background: rgba(255,84,112,0.14); border-color: rgba(255,84,112,0.4); }
+  .feedback .delta { font-weight: 800; }
+
+  /* Odds board */
+  .odds {
+    margin-top: 18px; background: rgba(0,0,0,0.28);
+    border: 1px dashed rgba(255,212,71,0.4); border-radius: 12px; padding: 12px 16px;
+  }
+  .odds h4 { font-size: 0.8rem; letter-spacing: 1.5px; color: var(--gold); text-transform: uppercase; margin-bottom: 8px; }
+  .odds-row { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 2px 0; color: var(--muted); }
+  .odds-row b { color: var(--text); }
+
+  /* Buttons */
+  .btn {
+    display: inline-block; margin-top: 16px; width: 100%;
+    background: linear-gradient(90deg, #ffd447, #ff8ab5);
+    color: #2d1b4e; font-weight: 800; font-size: 1.05rem;
+    border: none; border-radius: 12px; padding: 14px; cursor: pointer;
+    font-family: inherit; transition: transform 0.12s, filter 0.2s;
+  }
+  .btn:hover { filter: brightness(1.08); transform: translateY(-2px); }
+  .btn.secondary { background: var(--card); color: var(--text); border: 1px solid var(--card-border); }
+
+  .center { text-align: center; }
+  .big-emoji { font-size: 4rem; margin: 8px 0; }
+  .hidden { display: none !important; }
+  .progress-dots { display: flex; gap: 8px; justify-content: center; margin: 14px 0 4px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,0.2); }
+  .dot.done { background: var(--green); }
+  .dot.current { background: var(--gold); box-shadow: 0 0 0 4px rgba(255,212,71,0.25); }
+  .lead { font-size: 1.05rem; line-height: 1.55; color: var(--muted); margin: 10px 0; }
+  .lead b { color: var(--text); }
+  ul.rules { list-style: none; margin: 10px 0; }
+  ul.rules li { padding: 6px 0; color: var(--muted); font-size: 0.92rem; }
+  .disclaimer { font-size: 0.72rem; color: var(--muted); opacity: 0.7; margin-top: 14px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🤵 Charm Gian</h1>
+  <div class="subtitle">One man decides the 2030 World Cup host. Charm him. Win the bid.</div>
+
+  <!-- ===== START SCREEN ===== -->
+  <div id="start-screen" class="card center">
+    <div class="big-emoji">🏆</div>
+    <p class="lead">Gian alone picks the <b>2030 World Cup host</b>. You're a country out to charm him across a series of meetings. Keep his <b>Happiness Meter</b> high to advance — blow it and you slide back.</p>
+    <ul class="rules">
+      <li>💬 <b>Compliments</b> — flattery &amp; sweet-talk</li>
+      <li>🏟️ <b>Impressive Plans</b> — dazzling stadiums &amp; grand visions</li>
+      <li>🥂 <b>Hospitality</b> — banquets, VIP treatment, host visits</li>
+      <li>💸 <b>Dollars</b> — a cheeky "under-the-table" nudge (parody!)</li>
+    </ul>
+    <p class="lead">🃏 Gian's <b>Mood shifts every level</b> — read the room. What wowed him last time might flop now. Overdo the dollars and he might get <b>offended</b>.</p>
+    <label style="display:block;margin:12px 0 4px;color:var(--muted);font-size:0.9rem">Which country are you bidding for?</label>
+    <input id="country-input" type="text" placeholder="e.g. Australia 🦘" maxlength="24"
+      style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--card-border);background:rgba(0,0,0,0.3);color:var(--text);font-family:inherit;font-size:1rem;text-align:center" />
+    <button class="btn" id="start-btn">Begin the Charm Offensive ✨</button>
+    <div class="disclaimer">Parody game. No real people, wagering, or money involved. "Dollars" is a joke tactic — for laughs only.</div>
+  </div>
+
+  <!-- ===== GAME SCREEN ===== -->
+  <div id="game-screen" class="hidden">
+    <div class="hud">
+      <div class="pill">🌍 <span id="hud-country">Country</span></div>
+      <div class="pill">🎯 Level <span id="hud-level">1</span>/<span id="hud-total">6</span></div>
+      <div class="pill">💗 Meter <span id="hud-meter">50</span></div>
+    </div>
+
+    <div class="progress-dots" id="dots"></div>
+
+    <div class="card">
+      <div class="meter-wrap">
+        <div class="meter-label"><span>💔 Unimpressed</span><span id="meter-zone">💛 Intrigued</span><span>💚 Delighted</span></div>
+        <div class="meter-track">
+          <div class="meter-marks"></div>
+          <div class="meter-fill" id="meter-fill"></div>
+        </div>
+      </div>
+
+      <div class="gian">
+        <div class="gian-face" id="gian-face">🙂</div>
+        <div class="gian-info">
+          <h3>Gian — Level <span id="gian-level">1</span></h3>
+          <div class="gian-mood" id="gian-mood">Today's mood: —</div>
+          <div class="gian-desc" id="gian-desc"></div>
+        </div>
+      </div>
+
+      <div class="tactics" id="tactics"></div>
+
+      <div class="feedback" id="feedback"></div>
+
+      <div class="odds">
+        <h4>🎲 The Odds Board</h4>
+        <div class="odds-row"><span>Your bid to win</span><b id="odds-you">—</b></div>
+        <div class="odds-row"><span>The field (everyone else)</span><b id="odds-field">—</b></div>
+      </div>
+
+      <button class="btn hidden" id="next-btn">Next Meeting ➡️</button>
+    </div>
+  </div>
+
+  <!-- ===== END SCREEN ===== -->
+  <div id="end-screen" class="card center hidden">
+    <div class="big-emoji" id="end-emoji">🏆</div>
+    <h2 id="end-title">Result</h2>
+    <p class="lead" id="end-text"></p>
+    <div class="odds" style="margin-top:16px">
+      <h4>📊 Final Scorecard</h4>
+      <div class="odds-row"><span>Levels cleared</span><b id="end-levels">—</b></div>
+      <div class="odds-row"><span>Final Happiness Meter</span><b id="end-meter">—</b></div>
+      <div class="odds-row"><span>Verdict</span><b id="end-verdict">—</b></div>
+    </div>
+    <button class="btn" id="restart-btn">Play Again 🔄</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- Tactic definitions ----
+  const TACTICS = {
+    compliments: { key: "compliments", emoji: "💬", name: "Compliments", desc: "Flattery & sweet-talk" },
+    plans:       { key: "plans",       emoji: "🏟️", name: "Impressive Plans", desc: "Dazzling stadiums & visions" },
+    hospitality: { key: "hospitality", emoji: "🥂", name: "Hospitality", desc: "Banquets & VIP treatment" },
+    dollars:     { key: "dollars",     emoji: "💸", name: "Dollars", desc: "A cheeky 'incentive' (parody!)" },
+  };
+
+  // ---- Levels: each has a mood that changes which tactics land ----
+  // weights map tactic->points. Difficulty rises: later levels have bigger swings.
+  const LEVELS = [
+    {
+      mood: "Warm & Welcoming",
+      desc: "Gian's in great spirits and loves a bit of flattery.",
+      weights: { compliments: 16, plans: 10, hospitality: 12, dollars: -14 },
+      lines: {
+        compliments: "Gian beams. \"Oh, stop it — well, don't!\" He's charmed.",
+        plans: "\"Solid stadiums,\" he nods approvingly.",
+        hospitality: "\"A welcome drink? You're too kind.\"",
+        dollars: "He frowns. \"We just met. Put that away.\"",
+      }
+    },
+    {
+      mood: "Business-Minded",
+      desc: "He wants substance today — show him the grand vision.",
+      weights: { compliments: 4, plans: 18, hospitality: 8, dollars: -16 },
+      lines: {
+        compliments: "\"Flattery's nice, but show me the plan.\" Lukewarm.",
+        plans: "His eyes light up at the stadium renders. \"Now THIS is a bid.\"",
+        hospitality: "\"Pleasant, but let's talk logistics.\"",
+        dollars: "\"Are you trying to bribe a professional?\" Offended.",
+      }
+    },
+    {
+      mood: "Hungry & Tired",
+      desc: "Long flights, no lunch. Wine him and dine him.",
+      weights: { compliments: 6, plans: 5, hospitality: 20, dollars: -12 },
+      lines: {
+        compliments: "\"Mm-hmm. Is there... food?\" Distracted.",
+        plans: "\"Great, great. Any chance of a sandwich first?\"",
+        hospitality: "You unveil a banquet. Gian nearly weeps with joy. \"Bless you.\"",
+        dollars: "\"I'd rather have dinner than dollars, frankly.\"",
+      }
+    },
+    {
+      mood: "Suspicious & Guarded",
+      desc: "Rivals have been whispering. He's wary of being played.",
+      weights: { compliments: -6, plans: 14, hospitality: 6, dollars: -22 },
+      lines: {
+        compliments: "\"Laying it on thick, aren't we?\" He's suspicious.",
+        plans: "\"At least the plans are honest work.\" A rare nod.",
+        hospitality: "\"I'll take the coffee. Watching the rest of you.\"",
+        dollars: "\"THAT'S exactly what I was warned about!\" Furious.",
+      }
+    },
+    {
+      mood: "Feeling Fabulous",
+      desc: "He's on top of the world and wants to be adored.",
+      weights: { compliments: 20, plans: 8, hospitality: 12, dollars: -18 },
+      lines: {
+        compliments: "\"You GET me,\" he sighs happily. Absolutely glowing.",
+        plans: "\"Very handsome stadiums. Almost as handsome as me.\"",
+        hospitality: "\"VIP treatment for a VIP. Naturally.\"",
+        dollars: "\"Money? I'm above such things today.\" Sniffs.",
+      }
+    },
+    {
+      mood: "The Final Decision",
+      desc: "Everything's on the line. He wants the whole package — and NO funny business.",
+      weights: { compliments: 12, plans: 16, hospitality: 14, dollars: -28 },
+      lines: {
+        compliments: "\"Kind words on the big day. Noted.\"",
+        plans: "\"A legacy-defining bid. I'm impressed.\"",
+        hospitality: "\"Treated like royalty to the very end. Lovely.\"",
+        dollars: "\"On DECISION DAY?! Get out of my sight!\" Catastrophic.",
+      }
+    },
+  ];
+
+  const FACES = { high: "😍", mid: "🙂", low: "😠" };
+
+  // ---- Game state ----
+  const state = { meter: 50, level: 0, cleared: 0, country: "Your Country", answered: false };
+
+  const $ = (id) => document.getElementById(id);
+
+  function zoneOf(m) {
+    if (m >= 67) return { key: "high", label: "💚 Delighted", color: "var(--green)", face: FACES.high };
+    if (m >= 34) return { key: "mid", label: "💛 Intrigued", color: "var(--yellow)", face: FACES.mid };
+    return { key: "low", label: "💔 Unimpressed", color: "var(--red)", face: FACES.low };
+  }
+
+  function oddsText(m) {
+    // Higher meter -> shorter (better) odds. Purely cosmetic parody.
+    if (m >= 85) return "1/3 (red-hot favourite)";
+    if (m >= 67) return "Even money";
+    if (m >= 50) return "3/1";
+    if (m >= 34) return "8/1";
+    if (m >= 17) return "20/1";
+    return "100/1 (rank outsider)";
+  }
+
+  function renderTactics() {
+    const wrap = $("tactics");
+    wrap.innerHTML = "";
+    Object.values(TACTICS).forEach((t) => {
+      const btn = document.createElement("button");
+      btn.className = "tactic";
+      btn.innerHTML = `<span class="t-emoji">${t.emoji}</span>
+        <span class="t-name">${t.name}</span>
+        <span class="t-desc">${t.desc}</span>`;
+      btn.onclick = () => choose(t.key);
+      wrap.appendChild(btn);
+    });
+  }
+
+  function renderDots() {
+    const wrap = $("dots");
+    wrap.innerHTML = "";
+    LEVELS.forEach((_, i) => {
+      const d = document.createElement("div");
+      d.className = "dot" + (i < state.level ? " done" : i === state.level ? " current" : "");
+      wrap.appendChild(d);
+    });
+  }
+
+  function updateMeterUI() {
+    const z = zoneOf(state.meter);
+    const fill = $("meter-fill");
+    fill.style.width = state.meter + "%";
+    fill.style.background = z.color;
+    $("meter-zone").textContent = z.label;
+    $("hud-meter").textContent = Math.round(state.meter);
+    $("gian-face").textContent = z.face;
+    $("odds-you").textContent = oddsText(state.meter);
+    $("odds-field").textContent = state.meter >= 67 ? "5/1 (chasing you)" : state.meter >= 34 ? "2/1" : "1/2 (favoured)";
+  }
+
+  function loadLevel() {
+    const lv = LEVELS[state.level];
+    state.answered = false;
+    $("hud-level").textContent = state.level + 1;
+    $("hud-total").textContent = LEVELS.length;
+    $("gian-level").textContent = state.level + 1;
+    $("gian-mood").textContent = "Today's mood: " + lv.mood;
+    $("gian-desc").textContent = lv.desc;
+    $("feedback").className = "feedback";
+    $("feedback").textContent = "";
+    $("next-btn").classList.add("hidden");
+    renderTactics();
+    renderDots();
+    updateMeterUI();
+  }
+
+  function choose(tacticKey) {
+    if (state.answered) return;
+    state.answered = true;
+
+    const lv = LEVELS[state.level];
+    let delta = lv.weights[tacticKey];
+    // difficulty scaling: later levels have slightly amplified swings
+    const scale = 1 + state.level * 0.06;
+    delta = Math.round(delta * scale);
+
+    const before = state.meter;
+    state.meter = Math.max(0, Math.min(100, state.meter + delta));
+    const good = delta >= 0;
+
+    // disable tactics
+    document.querySelectorAll(".tactic").forEach((b) => (b.disabled = true));
+
+    // pop animation
+    const face = $("gian-face");
+    face.classList.add("pop");
+    setTimeout(() => face.classList.remove("pop"), 320);
+
+    updateMeterUI();
+
+    const fb = $("feedback");
+    const sign = delta >= 0 ? "+" : "";
+    fb.className = "feedback show " + (good ? "good" : "bad");
+    fb.innerHTML = `${lv.lines[tacticKey]}<br><span class="delta">${good ? "😄" : "😤"} Happiness ${sign}${delta}</span>`;
+
+    // decide progression note
+    const nb = $("next-btn");
+    if (state.level === LEVELS.length - 1) {
+      nb.textContent = "See the Verdict 🏆";
+    } else if (state.meter < before && before < 34) {
+      nb.textContent = "Regroup & Try the Next Meeting ➡️";
+    } else {
+      nb.textContent = "Next Meeting ➡️";
+    }
+    nb.classList.remove("hidden");
+  }
+
+  function nextLevel() {
+    // count a "clear" if you left the meeting in mid/high zone
+    if (zoneOf(state.meter).key !== "low") state.cleared++;
+
+    state.level++;
+    if (state.level >= LEVELS.length) return endGame();
+    loadLevel();
+  }
+
+  function endGame() {
+    $("game-screen").classList.add("hidden");
+    $("end-screen").classList.remove("hidden");
+
+    const m = Math.round(state.meter);
+    const z = zoneOf(m);
+    let title, text, emoji, verdict;
+
+    if (m >= 67) {
+      emoji = "🏆🎉";
+      title = `${state.country} wins the bid!`;
+      text = `Gian is <b>delighted</b>. After all that charm, he's announced <b>${state.country}</b> as host of the 2030 World Cup. The crowd goes wild!`;
+      verdict = "WINNER 🥇";
+    } else if (m >= 34) {
+      emoji = "🥈";
+      title = "So close!";
+      text = `Gian is <b>intrigued</b> but not quite convinced. <b>${state.country}</b> finishes a respectable runner-up. One more banquet and you'd have had it...`;
+      verdict = "Runner-up";
+    } else {
+      emoji = "😬";
+      title = "Bid rejected";
+      text = `Gian looks <b>thoroughly unimpressed</b>. <b>${state.country}</b>'s bid collapses. Perhaps fewer envelopes of cash next time?`;
+      verdict = "Eliminated";
+    }
+
+    $("end-emoji").textContent = emoji;
+    $("end-title").textContent = title;
+    $("end-text").innerHTML = text;
+    $("end-levels").textContent = `${state.cleared} / ${LEVELS.length}`;
+    $("end-meter").textContent = `${m} — ${z.label}`;
+    $("end-verdict").textContent = verdict;
+  }
+
+  function startGame() {
+    const name = $("country-input").value.trim();
+    state.country = name || "Your Country";
+    state.meter = 50;
+    state.level = 0;
+    state.cleared = 0;
+    $("hud-country").textContent = state.country;
+    $("start-screen").classList.add("hidden");
+    $("end-screen").classList.add("hidden");
+    $("game-screen").classList.remove("hidden");
+    loadLevel();
+  }
+
+  // ---- wire up ----
+  $("start-btn").onclick = startGame;
+  $("next-btn").onclick = nextLevel;
+  $("restart-btn").onclick = () => {
+    $("end-screen").classList.add("hidden");
+    $("start-screen").classList.remove("hidden");
+  };
+  $("country-input").addEventListener("keydown", (e) => { if (e.key === "Enter") startGame(); });
+})();
+</script>
+</body>
+</html>
