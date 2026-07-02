@@ -9,6 +9,7 @@ import {
 import { api } from "../api/client";
 import { storage } from "./storage";
 import { clearPushToken, registerForPushNotifications } from "../push/register";
+import type { NamedTemplate } from "../api/metadata";
 
 export interface Me {
   userId: string;
@@ -17,8 +18,8 @@ export interface Me {
   talentId?: string;
   talentName?: string;
   talentInitials?: string;
-  /** Admin-set metadata defaults that pre-fill the tip form. Keyed by field key. */
-  metadataTemplate?: Record<string, unknown>;
+  /** Admin-authored named metadata templates the talent picks from at submit. */
+  metadataTemplates?: NamedTemplate[];
 }
 
 interface AuthValue {

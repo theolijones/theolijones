@@ -31,6 +31,17 @@ export interface Schema {
 
 export type TemplateValue = string | number | boolean;
 
+/** Schema key of the per-submission Bet ID — entered by the talent in the app,
+ *  never part of an admin template. Mirrors the backend constant. */
+export const BET_ID_FIELD_KEY = "FeedTipId";
+
+/** A named, admin-authored metadata template attached to a user. */
+export interface NamedTemplate {
+  id: string;
+  name: string;
+  values: Record<string, unknown>;
+}
+
 export const effectiveControl = (f: SchemaField): FieldControl => {
   if (f.control) return f.control;
   if (f.type === "enum") return "select";
@@ -40,14 +51,15 @@ export const effectiveControl = (f: SchemaField): FieldControl => {
 };
 
 /**
- * Fields an admin can pre-set on a token. The app-input fields, minus `date`
- * (an event date default makes no sense) — the talent always picks that.
+ * Fields an admin sets in a template. The app-input fields, minus `date` (the
+ * event date is per-tip) and the Bet ID (entered per-submission in the app).
  */
 export const templatableFields = (fields: SchemaField[]): SchemaField[] =>
   fields.filter(
     (f) =>
       (f.source ?? "input") === "input" &&
       f.exposed !== false &&
+      f.key !== BET_ID_FIELD_KEY &&
       effectiveControl(f) !== "date"
   );
 

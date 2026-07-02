@@ -45,7 +45,6 @@ export const handler: APIGatewayProxyHandlerV2 = async (event) => {
     talentId: tokenRow.talentId,
     talentName: tokenRow.talentName,
     talentInitials: tokenRow.talentInitials,
-    metadataTemplate: tokenRow.metadataTemplate,
     createdAt: now,
     updatedAt: now,
   };

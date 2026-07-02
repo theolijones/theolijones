@@ -145,6 +145,12 @@ export class BetTipsStack extends cdk.Stack {
     const mePushTokenFn = fn("MePushTokenFn", "me-push-token.ts");
     usersTable.grantReadWriteData(mePushTokenFn);
 
+    const usersListFn = fn("UsersListFn", "users-list.ts");
+    usersTable.grantReadData(usersListFn);
+
+    const usersTemplatesFn = fn("UsersTemplatesFn", "users-templates.ts");
+    usersTable.grantReadWriteData(usersTemplatesFn);
+
     const tokensListFn = fn("TokensListFn", "tokens-list.ts");
     tokensTable.grantReadData(tokensListFn);
 
@@ -259,6 +265,8 @@ export class BetTipsStack extends cdk.Stack {
     protectedRoute("/uploads", apigw.HttpMethod.GET, uploadsMineFn);
     protectedRoute("/uploads/{uploadId}/complete", apigw.HttpMethod.POST, uploadsCompleteFn);
     protectedRoute("/uploads/{uploadId}/assets", apigw.HttpMethod.POST, uploadsAssetFn);
+    protectedRoute("/admin/users", apigw.HttpMethod.GET, usersListFn);
+    protectedRoute("/admin/users/{userId}/templates", apigw.HttpMethod.PUT, usersTemplatesFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.GET, tokensListFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.POST, tokensCreateFn);
     protectedRoute("/admin/tokens/{token}", apigw.HttpMethod.DELETE, tokensRevokeFn);

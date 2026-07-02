@@ -1,7 +1,6 @@
 import type { APIGatewayProxyHandlerV2WithLambdaAuthorizer } from "aws-lambda";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb, tables, type TokenRecord, type UserRole } from "./shared/db";
-import { cleanTemplate } from "./tokens-create";
 import { principalFrom, requireAdmin } from "./shared/context";
 import { bad, forbidden, notFound, ok, parseJson, unauthorized } from "./shared/http";
 
@@ -11,12 +10,7 @@ interface UpdateBody {
   talentId?: string | null;
   talentName?: string | null;
   talentInitials?: string | null;
-  /** Replaces the whole template. Empty object clears it. Omit to leave unchanged. */
-  metadataTemplate?: Record<string, unknown>;
 }
-
-const isPlainObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === "object" && v !== null && !Array.isArray(v);
 
 export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
   userId: string;
@@ -84,20 +78,6 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     }
   }
 
-  const templateTouched = body.metadataTemplate !== undefined;
-  let template: Record<string, unknown> | undefined;
-  if (templateTouched) {
-    if (!isPlainObject(body.metadataTemplate)) return bad("metadataTemplate must be an object");
-    const cleaned = cleanTemplate(body.metadataTemplate);
-    if (Object.keys(cleaned).length) {
-      template = cleaned;
-      setParts.push("metadataTemplate = :mt");
-      values[":mt"] = cleaned;
-    } else {
-      removeParts.push("metadataTemplate");
-    }
-  }
-
   if (setParts.length === 0 && removeParts.length === 0) return ok(row);
 
   let expr = "";
@@ -114,30 +94,20 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     })
   );
 
-  // For a token that's already been redeemed, mirror talent + template changes
-  // onto the user so existing accounts pick them up immediately.
-  if (row.status === "used" && row.usedBy) {
+  // For a token that's already been redeemed, mirror talent changes onto the
+  // user so existing accounts pick them up immediately.
+  if (row.status === "used" && row.usedBy && talentTouched) {
     const uSet: string[] = ["updatedAt = :ut"];
     const uRemove: string[] = [];
     const uValues: Record<string, unknown> = { ":ut": new Date().toISOString() };
 
-    if (talentTouched) {
-      if (talentFields) {
-        uSet.push("talentId = :tid", "talentName = :tname", "talentInitials = :tinit");
-        uValues[":tid"] = talentFields.talentId;
-        uValues[":tname"] = talentFields.talentName;
-        uValues[":tinit"] = talentFields.talentInitials;
-      } else {
-        uRemove.push("talentId", "talentName", "talentInitials");
-      }
-    }
-    if (templateTouched) {
-      if (template) {
-        uSet.push("metadataTemplate = :mt");
-        uValues[":mt"] = template;
-      } else {
-        uRemove.push("metadataTemplate");
-      }
+    if (talentFields) {
+      uSet.push("talentId = :tid", "talentName = :tname", "talentInitials = :tinit");
+      uValues[":tid"] = talentFields.talentId;
+      uValues[":tname"] = talentFields.talentName;
+      uValues[":tinit"] = talentFields.talentInitials;
+    } else {
+      uRemove.push("talentId", "talentName", "talentInitials");
     }
 
     if (uSet.length > 1 || uRemove.length) {

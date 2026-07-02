@@ -9,6 +9,7 @@ const Layout = ({ children }: { children: ReactNode }) => {
       <aside className="sidebar">
         <h1>Bet Tips</h1>
         <NavLink to="/tokens" className={({ isActive }) => (isActive ? "active" : "")}>Signup Tokens</NavLink>
+        <NavLink to="/users" className={({ isActive }) => (isActive ? "active" : "")}>Users</NavLink>
         <NavLink to="/uploads" className={({ isActive }) => (isActive ? "active" : "")}>Uploads</NavLink>
         <NavLink to="/schema" className={({ isActive }) => (isActive ? "active" : "")}>Metadata Schema</NavLink>
         <NavLink to="/assets" className={({ isActive }) => (isActive ? "active" : "")}>Asset Library</NavLink>

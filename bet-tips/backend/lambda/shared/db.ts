@@ -20,6 +20,18 @@ export const buckets = {
 
 export type UserRole = "admin" | "user";
 
+/**
+ * A named, admin-authored metadata template attached to a user. `values` holds
+ * the app's control representation for the templatable input fields (sport key,
+ * competition string, tipType id, text, boolean) — everything except the
+ * per-submission Bet ID, which the talent enters and the app injects at submit.
+ */
+export interface NamedTemplate {
+  id: string;
+  name: string;
+  values: Record<string, unknown>;
+}
+
 export interface UserRecord {
   userId: string;
   role: UserRole;
@@ -32,12 +44,8 @@ export interface UserRecord {
   talentId?: string;
   talentName?: string;
   talentInitials?: string;
-  /**
-   * Admin-set metadata defaults inherited from the signup token. Keyed by
-   * schema field key, holding the app's control value (sport key, competition
-   * string, tipType id, text, etc). Pre-fills the app form as editable defaults.
-   */
-  metadataTemplate?: Record<string, unknown>;
+  /** Admin-authored named metadata templates the talent picks from in the app. */
+  metadataTemplates?: NamedTemplate[];
   createdAt: string;
   updatedAt: string;
 }
@@ -53,8 +61,6 @@ export interface TokenRecord {
   talentId?: string;
   talentName?: string;
   talentInitials?: string;
-  /** Metadata defaults copied onto the user at signup (see UserRecord.metadataTemplate). */
-  metadataTemplate?: Record<string, unknown>;
   createdAt: string;
   expiresAt?: string;
 }

@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { TALENTS, talentById } from "../data/talents";
-import { templatableFields, type SchemaField, type Schema } from "../data/metadataFields";
-import MetadataTemplate from "../components/MetadataTemplate";
 
 interface Token {
   token: string;
@@ -15,19 +13,13 @@ interface Token {
   talentId?: string;
   talentName?: string;
   talentInitials?: string;
-  metadataTemplate?: Record<string, unknown>;
 }
-
-const templateCount = (t?: Record<string, unknown>) =>
-  t ? Object.keys(t).length : 0;
 
 const Tokens = () => {
   const [list, setList] = useState<Token[]>([]);
-  const [fields, setFields] = useState<SchemaField[]>([]);
   const [note, setNote] = useState("");
   const [talentId, setTalentId] = useState("");
   const [initials, setInitials] = useState("");
-  const [template, setTemplate] = useState<Record<string, unknown>>({});
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -41,12 +33,8 @@ const Tokens = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const [tokensRes, schemaRes] = await Promise.all([
-        api<{ tokens: Token[] }>("/admin/tokens"),
-        api<Schema>("/admin/schema"),
-      ]);
+      const tokensRes = await api<{ tokens: Token[] }>("/admin/tokens");
       setList(tokensRes.tokens);
-      setFields(schemaRes.fields);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -75,13 +63,11 @@ const Tokens = () => {
           talentId: talent?.id,
           talentName: talent?.name,
           talentInitials: talent ? trimmedInitials : undefined,
-          metadataTemplate: template,
         },
       });
       setNote("");
       setTalentId("");
       setInitials("");
-      setTemplate({});
       await load();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : (e as Error).message);
@@ -99,8 +85,6 @@ const Tokens = () => {
       alert((e as Error).message);
     }
   };
-
-  const editable = templatableFields(fields);
 
   return (
     <div>
@@ -136,15 +120,9 @@ const Tokens = () => {
             {busy ? "Issuing…" : "Issue token"}
           </button>
         </div>
-
-        {editable.length > 0 && (
-          <>
-            <div className="section-label">
-              Metadata template (defaults the talent can edit in the app)
-            </div>
-            <MetadataTemplate fields={fields} value={template} onChange={setTemplate} />
-          </>
-        )}
+        <div className="muted" style={{ marginTop: 8, fontSize: 12 }}>
+          Metadata templates are managed per user on the Users page after signup.
+        </div>
         {err && <div className="error">{err}</div>}
       </div>
 
@@ -160,7 +138,6 @@ const Tokens = () => {
                 <th>Token</th>
                 <th>Status</th>
                 <th>Talent</th>
-                <th>Template</th>
                 <th>Note</th>
                 <th>Created</th>
                 <th></th>
@@ -174,13 +151,6 @@ const Tokens = () => {
                     <span className={`badge ${t.status}`}>{t.status}</span>
                   </td>
                   <td>{t.talentName ? `${t.talentName} (${t.talentInitials})` : ""}</td>
-                  <td className="muted">
-                    {templateCount(t.metadataTemplate)
-                      ? `${templateCount(t.metadataTemplate)} field${
-                          templateCount(t.metadataTemplate) === 1 ? "" : "s"
-                        }`
-                      : "—"}
-                  </td>
                   <td>{t.note ?? ""}</td>
                   <td className="muted">{new Date(t.createdAt).toLocaleString()}</td>
                   <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
@@ -209,7 +179,6 @@ const Tokens = () => {
       {editing && (
         <EditTokenModal
           token={editing}
-          fields={fields}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null);
@@ -223,18 +192,14 @@ const Tokens = () => {
 
 interface EditModalProps {
   token: Token;
-  fields: SchemaField[];
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }
 
-const EditTokenModal = ({ token, fields, onClose, onSaved }: EditModalProps) => {
+const EditTokenModal = ({ token, onClose, onSaved }: EditModalProps) => {
   const [note, setNote] = useState(token.note ?? "");
   const [talentId, setTalentId] = useState(token.talentId ?? "");
   const [initials, setInitials] = useState(token.talentInitials ?? "");
-  const [template, setTemplate] = useState<Record<string, unknown>>(
-    token.metadataTemplate ?? {}
-  );
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -261,7 +226,6 @@ const EditTokenModal = ({ token, fields, onClose, onSaved }: EditModalProps) => 
           talentId: talent?.id ?? "",
           talentName: talent?.name ?? "",
           talentInitials: talent ? trimmedInitials : "",
-          metadataTemplate: template,
         },
       });
       await onSaved();
@@ -271,8 +235,6 @@ const EditTokenModal = ({ token, fields, onClose, onSaved }: EditModalProps) => 
     }
   };
 
-  const editable = templatableFields(fields);
-
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -281,7 +243,7 @@ const EditTokenModal = ({ token, fields, onClose, onSaved }: EditModalProps) => 
         </h3>
         <div className="muted" style={{ marginBottom: 16 }}>
           {token.status === "used"
-            ? "This token has been redeemed — changes also apply to the signed-up account."
+            ? "This token has been redeemed — talent changes also apply to the signed-up account."
             : "Changes apply when this token is redeemed."}
         </div>
 
@@ -309,13 +271,6 @@ const EditTokenModal = ({ token, fields, onClose, onSaved }: EditModalProps) => 
             />
           </div>
         </div>
-
-        {editable.length > 0 && (
-          <>
-            <div className="section-label">Metadata template</div>
-            <MetadataTemplate fields={fields} value={template} onChange={setTemplate} />
-          </>
-        )}
 
         {err && <div className="error">{err}</div>}
 

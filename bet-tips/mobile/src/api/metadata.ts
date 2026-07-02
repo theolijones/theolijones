@@ -5,6 +5,16 @@ import { sportByKey } from "../data/contentMappings";
 // (sport → sport key, competition → competition string, tipType → UUID).
 export type FieldValue = string | number | boolean | Date | null | undefined;
 
+/** Schema key of the per-submission Bet ID. Mirrors the backend constant. */
+export const BET_ID_FIELD_KEY = "FeedTipId";
+
+/** A named, admin-authored metadata template the talent picks from at submit. */
+export interface NamedTemplate {
+  id: string;
+  name: string;
+  values: Record<string, unknown>;
+}
+
 export interface AccountTalent {
   talentId?: string;
   talentInitials?: string;

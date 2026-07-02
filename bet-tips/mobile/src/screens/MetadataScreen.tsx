@@ -6,7 +6,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -19,26 +18,17 @@ import type { RootStackParamList } from "../navigation/types";
 import { fetchSchema, type SchemaField } from "../api/schema";
 import { submitUpload } from "../api/uploads";
 import { useAuth } from "../auth/AuthContext";
-import { SPORTS, TIP_TYPES, sportByKey } from "../data/contentMappings";
 import {
+  BET_ID_FIELD_KEY,
   buildVideoMetadata,
   effectiveControl,
-  exposedInputFields,
   missingRequired,
   type FieldValue,
+  type NamedTemplate,
 } from "../api/metadata";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Metadata">;
 type MetadataRoute = RouteProp<RootStackParamList, "Metadata">;
-
-interface Option {
-  label: string;
-  value: string;
-}
-
-const pad = (n: number) => String(n).padStart(2, "0");
-const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-const toTimeStr = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 
 const MetadataScreen = () => {
   const nav = useNavigation<Nav>();
@@ -47,11 +37,14 @@ const MetadataScreen = () => {
   const { me } = useAuth();
 
   const [fields, setFields] = useState<SchemaField[] | null>(null);
-  const [values, setValues] = useState<Record<string, FieldValue>>({});
   const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [betId, setBetId] = useState("");
+  const [templateId, setTemplateId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
+
+  const templates = useMemo<NamedTemplate[]>(() => me?.metadataTemplates ?? [], [me]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,76 +53,65 @@ const MetadataScreen = () => {
         const res = await fetchSchema();
         if (cancelled) return;
         setFields(res.fields);
-        // Pre-fill from the account's admin-set metadata template (editable
-        // defaults). Event dates stay per-tip; the talent can change any of these.
-        const template = me?.metadataTemplate ?? {};
-        const seed: Record<string, FieldValue> = {};
-        exposedInputFields(res.fields).forEach((f) => {
-          const c = effectiveControl(f);
-          const tv = template[f.key];
-          if (c === "boolean") {
-            seed[f.key] = typeof tv === "boolean" ? tv : false;
-          } else if (c === "date") {
-            seed[f.key] = new Date();
-          } else if (tv !== undefined && tv !== null && tv !== "") {
-            seed[f.key] = tv as FieldValue;
-          } else {
-            seed[f.key] = "";
-          }
-        });
-        setValues(seed);
       } catch (e) {
         if (!cancelled) setLoadErr((e as Error).message);
       }
     };
     void load();
+    // Preselect the only template so a single-template user can just enter a Bet ID.
+    if (templates.length === 1) setTemplateId(templates[0].id);
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const inputs = useMemo(() => (fields ? exposedInputFields(fields) : []), [fields]);
+  const selected = useMemo(
+    () => templates.find((t) => t.id === templateId) ?? null,
+    [templates, templateId]
+  );
 
-  // Talent-derived fields require an assigned talent on the account.
+  // Talent-derived fields (GenericContentType, TalentOrShowList) require an
+  // assigned talent on the account.
   const needsTalent = useMemo(
     () => !!fields?.some((f) => (f.source ?? "input") === "derived"),
     [fields]
   );
   const talentMissing = needsTalent && (!me?.talentId || !me?.talentInitials);
 
+  // Merge the chosen template with the entered Bet ID and a per-submission date
+  // for any date field (the talent no longer sees the full form).
+  const mergedValues = useMemo<Record<string, FieldValue>>(() => {
+    if (!fields || !selected) return {};
+    const out: Record<string, FieldValue> = { ...(selected.values as Record<string, FieldValue>) };
+    for (const f of fields) {
+      if ((f.source ?? "input") === "input" && effectiveControl(f) === "date") {
+        out[f.key] = new Date();
+      }
+    }
+    out[BET_ID_FIELD_KEY] = betId.trim();
+    return out;
+  }, [fields, selected, betId]);
+
   const missing = useMemo(
-    () => (fields ? missingRequired(fields, values) : []),
-    [fields, values]
+    () => (fields && selected ? missingRequired(fields, mergedValues) : []),
+    [fields, selected, mergedValues]
   );
 
-  const sportKey = useMemo(() => {
-    const sf = inputs.find((f) => f.catalog === "sport");
-    const v = sf ? values[sf.key] : undefined;
-    return typeof v === "string" ? v : "";
-  }, [inputs, values]);
-
-  const setValue = (key: string, v: FieldValue) =>
-    setValues((prev) => ({ ...prev, [key]: v }));
-
-  const optionsFor = (f: SchemaField): Option[] => {
-    if (f.catalog === "sport") return SPORTS.map((s) => ({ label: s.label, value: s.key }));
-    if (f.catalog === "tipType") return TIP_TYPES.map((t) => ({ label: t.name, value: t.id }));
-    if (f.catalog === "competition") {
-      const comps = sportKey ? sportByKey(sportKey)?.competitions ?? [] : [];
-      return comps.map((c) => ({ label: c, value: c }));
-    }
-    return (f.options ?? []).map((o) => ({ label: o, value: o }));
-  };
-
-  const canSubmit = !!fields && !talentMissing && missing.length === 0 && !submitting;
+  const canSubmit =
+    !!fields &&
+    !talentMissing &&
+    !!selected &&
+    betId.trim().length > 0 &&
+    missing.length === 0 &&
+    !submitting;
 
   const submit = async () => {
-    if (!fields || !canSubmit) return;
+    if (!fields || !selected || !canSubmit) return;
     setSubmitting(true);
     setSubmitErr(null);
     setProgress(0);
     try {
-      const metadata = buildVideoMetadata(fields, values, {
+      const metadata = buildVideoMetadata(fields, mergedValues, {
         talentId: me?.talentId,
         talentInitials: me?.talentInitials,
       });
@@ -150,6 +132,11 @@ const MetadataScreen = () => {
       setSubmitErr((e as Error).message);
       setSubmitting(false);
     }
+  };
+
+  const pasteBetId = async () => {
+    const text = await Clipboard.getStringAsync();
+    if (text) setBetId(text.trim());
   };
 
   if (!fields && !loadErr) {
@@ -183,24 +170,70 @@ const MetadataScreen = () => {
       >
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <Text style={styles.title}>Tip details</Text>
-          <Text style={styles.subtitle}>Fill these in before submitting for review.</Text>
+          <Text style={styles.subtitle}>
+            Enter the Bet ID and choose a template, then submit for review.
+          </Text>
 
           {talentMissing && (
             <Text style={styles.error}>
-              Your account has no talent assigned. Ask an admin to set it on your signup
-              before submitting.
+              Your account has no talent assigned. Ask an admin to set it before submitting.
             </Text>
           )}
 
-          {inputs.map((f) => (
-            <FieldRow
-              key={f.key}
-              field={f}
-              value={values[f.key]}
-              options={optionsFor(f)}
-              onChange={(v) => setValue(f.key, v)}
-            />
-          ))}
+          <View style={styles.field}>
+            <Text style={styles.label}>
+              Bet ID<Text style={styles.req}> *</Text>
+            </Text>
+            <View style={styles.inputRow}>
+              <TextInput
+                style={[styles.input, { flex: 1 }]}
+                value={betId}
+                onChangeText={setBetId}
+                placeholder="Paste the bet ID"
+                placeholderTextColor="#64748b"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Pressable style={styles.pasteBtn} onPress={pasteBetId}>
+                <Text style={styles.pasteText}>Paste</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>
+              Template<Text style={styles.req}> *</Text>
+            </Text>
+            {templates.length === 0 ? (
+              <Text style={styles.help}>
+                No templates assigned to your account yet. Ask an admin to add one.
+              </Text>
+            ) : (
+              <View style={styles.enumWrap}>
+                {templates.map((t) => {
+                  const isSel = t.id === templateId;
+                  return (
+                    <Pressable
+                      key={t.id}
+                      onPress={() => setTemplateId(t.id)}
+                      style={[styles.enumChip, isSel && styles.enumChipSelected]}
+                    >
+                      <Text style={isSel ? styles.enumChipTextSelected : styles.enumChipText}>
+                        {t.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          {selected && missing.length > 0 && (
+            <Text style={styles.error}>
+              This template is missing required fields ({missing.map((f) => f.label).join(", ")}).
+              Ask an admin to complete it.
+            </Text>
+          )}
 
           {submitErr && <Text style={styles.error}>{submitErr}</Text>}
         </ScrollView>
@@ -231,156 +264,6 @@ const MetadataScreen = () => {
   );
 };
 
-interface FieldRowProps {
-  field: SchemaField;
-  value: FieldValue;
-  options: Option[];
-  onChange: (v: FieldValue) => void;
-}
-
-const FieldRow = ({ field, value, options, onChange }: FieldRowProps) => {
-  const control = effectiveControl(field);
-
-  const Label = (
-    <Text style={styles.label}>
-      {field.label}
-      {field.required && <Text style={styles.req}> *</Text>}
-    </Text>
-  );
-
-  if (control === "boolean") {
-    return (
-      <View style={styles.field}>
-        <View style={styles.rowBetween}>
-          {Label}
-          <Switch value={Boolean(value)} onValueChange={onChange} />
-        </View>
-        {field.helpText && <Text style={styles.help}>{field.helpText}</Text>}
-      </View>
-    );
-  }
-
-  if (control === "select") {
-    return (
-      <View style={styles.field}>
-        {Label}
-        <View style={styles.enumWrap}>
-          {options.length === 0 ? (
-            <Text style={styles.help}>Select a sport first.</Text>
-          ) : (
-            options.map((opt) => {
-              const selected = value === opt.value;
-              return (
-                <Pressable
-                  key={opt.value}
-                  onPress={() => onChange(opt.value)}
-                  style={[styles.enumChip, selected && styles.enumChipSelected]}
-                >
-                  <Text style={selected ? styles.enumChipTextSelected : styles.enumChipText}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              );
-            })
-          )}
-        </View>
-        {field.helpText && <Text style={styles.help}>{field.helpText}</Text>}
-      </View>
-    );
-  }
-
-  if (control === "date") {
-    return (
-      <View style={styles.field}>
-        {Label}
-        <DateTimeField value={value instanceof Date ? value : new Date()} onChange={onChange} />
-        {field.helpText && <Text style={styles.help}>{field.helpText}</Text>}
-      </View>
-    );
-  }
-
-  // text / number
-  const isText = control === "text";
-  const pasteInto = async () => {
-    const text = await Clipboard.getStringAsync();
-    if (text) onChange(text);
-  };
-
-  return (
-    <View style={styles.field}>
-      {Label}
-      <View style={styles.inputRow}>
-        <TextInput
-          style={[styles.input, isText && { flex: 1 }]}
-          value={value === null || value === undefined ? "" : String(value)}
-          onChangeText={onChange}
-          keyboardType={control === "number" ? "decimal-pad" : "default"}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder={field.helpText ?? ""}
-          placeholderTextColor="#64748b"
-        />
-        {isText && (
-          <Pressable style={styles.pasteBtn} onPress={pasteInto}>
-            <Text style={styles.pasteText}>Paste</Text>
-          </Pressable>
-        )}
-      </View>
-    </View>
-  );
-};
-
-// JS-only date + time entry (no native module). Maintains text for partial
-// edits and commits a Date once both parts parse.
-const DateTimeField = ({ value, onChange }: { value: Date; onChange: (d: Date) => void }) => {
-  const [dateStr, setDateStr] = useState(toDateStr(value));
-  const [timeStr, setTimeStr] = useState(toTimeStr(value));
-
-  const commit = (d: string, t: string) => {
-    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.trim());
-    const tm = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
-    if (!m || !tm) return;
-    const next = new Date(
-      Number(m[1]),
-      Number(m[2]) - 1,
-      Number(m[3]),
-      Number(tm[1]),
-      Number(tm[2]),
-      0
-    );
-    if (!Number.isNaN(next.getTime())) onChange(next);
-  };
-
-  return (
-    <View style={styles.inputRow}>
-      <TextInput
-        style={[styles.input, { flex: 1.4 }]}
-        value={dateStr}
-        onChangeText={(v) => {
-          setDateStr(v);
-          commit(v, timeStr);
-        }}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor="#64748b"
-        keyboardType="numbers-and-punctuation"
-        autoCorrect={false}
-      />
-      <TextInput
-        style={[styles.input, { flex: 1 }]}
-        value={timeStr}
-        onChangeText={(v) => {
-          setTimeStr(v);
-          commit(dateStr, v);
-        }}
-        placeholder="HH:MM"
-        placeholderTextColor="#64748b"
-        keyboardType="numbers-and-punctuation"
-        autoCorrect={false}
-      />
-    </View>
-  );
-};
-
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#0f172a" },
   center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 16 },
@@ -388,7 +271,6 @@ const styles = StyleSheet.create({
   title: { color: "#e2e8f0", fontSize: 24, fontWeight: "700", marginBottom: 4 },
   subtitle: { color: "#94a3b8", fontSize: 14, marginBottom: 20, lineHeight: 20 },
   field: { marginBottom: 16 },
-  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   label: {
     color: "#94a3b8",
     fontSize: 12,
