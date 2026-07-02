@@ -18,3 +18,7 @@ mobile/android/
 
 # Vite
 admin/dist/
+
+# Python
+__pycache__/
+*.pyc

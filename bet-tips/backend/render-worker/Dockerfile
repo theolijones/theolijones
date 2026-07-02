@@ -15,16 +15,19 @@ FROM public.ecr.aws/lambda/nodejs:20
 
 # ffmpeg static binary (arm64, GPL build with drawtext/libass/libfreetype).
 # BtbN's builds are the standard choice for ffmpeg-in-docker and include
-# all the text rendering filters we need.
-ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-linuxarm64-gpl.tar.xz
+# all the text rendering filters we need. PINNED to a specific release — the
+# old `latest` rolling tag silently changed the ffmpeg binary on every rebuild,
+# which is how the segment-render path regressed (worked Apr 30, broke ~May 19).
+# Bump deliberately, never via a rolling tag.
+ARG FFMPEG_URL=https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-06-21-13-34/ffmpeg-n7.1.5-linuxarm64-gpl-7.1.tar.xz
 
 RUN dnf -y update \
   && dnf -y install tar xz dejavu-sans-fonts python3 python3-pip mesa-libGL \
   && dnf clean all \
   && curl -fsSL "$FFMPEG_URL" -o /tmp/ffmpeg.tar.xz \
   && tar -C /tmp -xf /tmp/ffmpeg.tar.xz \
-  && cp /tmp/ffmpeg-master-latest-linuxarm64-gpl/bin/ffmpeg /usr/bin/ffmpeg \
-  && cp /tmp/ffmpeg-master-latest-linuxarm64-gpl/bin/ffprobe /usr/bin/ffprobe \
+  && cp /tmp/ffmpeg-*/bin/ffmpeg /usr/bin/ffmpeg \
+  && cp /tmp/ffmpeg-*/bin/ffprobe /usr/bin/ffprobe \
   && chmod +x /usr/bin/ffmpeg /usr/bin/ffprobe \
   && rm -rf /tmp/ffmpeg*
 
@@ -36,11 +39,21 @@ RUN dnf -y update \
 # and exports it via LD_LIBRARY_PATH. Python's _hashlib then loads the wrong
 # OpenSSL and crashes. We unset LD_LIBRARY_PATH for pip install, and the Node
 # handler also spawns python3 with LD_LIBRARY_PATH stripped at runtime.
+# PINNED — these were previously unpinned, so a rebuild could pull a newer
+# mediapipe/opencv (with different native behaviour) at any time. numpy held at
+# 1.x to match the opencv/mediapipe wheels' ABI. Bump deliberately, with a test.
+#
+# mediapipe MUST be >= 0.10.18: Lambda's sandbox does not expose
+# /sys/devices/system/cpu/{possible,present,online}, so MediaPipe's XNNPACK
+# delegate can't read the CPU topology. 0.10.14/0.10.15 SIGSEGV on the first
+# segmentation frame because of this (every server-side cutout render failed
+# from ~May 2026); 0.10.18 degrades gracefully and runs. Verified by hiding
+# those /sys files in the local ARM64 image and re-running segment.py.
 RUN unset LD_LIBRARY_PATH \
   && python3 -m pip install --no-cache-dir \
-      mediapipe \
-      opencv-python-headless \
-      numpy
+      mediapipe==0.10.18 \
+      opencv-python-headless==4.10.0.84 \
+      numpy==1.26.4
 
 ENV FFMPEG_PATH=/usr/bin/ffmpeg \
     FONT_REG=/usr/share/fonts/dejavu/DejaVuSans.ttf \
