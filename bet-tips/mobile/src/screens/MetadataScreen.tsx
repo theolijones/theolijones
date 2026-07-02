@@ -60,10 +60,22 @@ const MetadataScreen = () => {
         const res = await fetchSchema();
         if (cancelled) return;
         setFields(res.fields);
+        // Pre-fill from the account's admin-set metadata template (editable
+        // defaults). Event dates stay per-tip; the talent can change any of these.
+        const template = me?.metadataTemplate ?? {};
         const seed: Record<string, FieldValue> = {};
         exposedInputFields(res.fields).forEach((f) => {
           const c = effectiveControl(f);
-          seed[f.key] = c === "boolean" ? false : c === "date" ? new Date() : "";
+          const tv = template[f.key];
+          if (c === "boolean") {
+            seed[f.key] = typeof tv === "boolean" ? tv : false;
+          } else if (c === "date") {
+            seed[f.key] = new Date();
+          } else if (tv !== undefined && tv !== null && tv !== "") {
+            seed[f.key] = tv as FieldValue;
+          } else {
+            seed[f.key] = "";
+          }
         });
         setValues(seed);
       } catch (e) {

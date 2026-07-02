@@ -25,6 +25,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     talentId: user.talentId,
     talentName: user.talentName,
     talentInitials: user.talentInitials,
+    metadataTemplate: user.metadataTemplate,
     createdAt: user.createdAt,
   });
 };

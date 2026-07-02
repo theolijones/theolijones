@@ -238,3 +238,63 @@ th {
   word-break: break-word;
 }
 .link-like:hover { color: var(--accent); background: transparent; }
+
+/* Metadata template editor */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+.template-field { margin: 0; }
+.template-field > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.section-label {
+  margin: 16px 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.token-template-summary {
+  font-size: 12px;
+  color: var(--muted);
+  max-width: 320px;
+}
+.token-template-summary .chip {
+  display: inline-block;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin: 0 4px 4px 0;
+  color: var(--text);
+}
+
+/* Edit modal */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.7);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px;
+  overflow-y: auto;
+  z-index: 50;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 640px;
+  max-width: 100%;
+}
+.modal h3 { margin: 0 0 4px; }
+.modal .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }

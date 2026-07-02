@@ -17,6 +17,8 @@ export interface Me {
   talentId?: string;
   talentName?: string;
   talentInitials?: string;
+  /** Admin-set metadata defaults that pre-fill the tip form. Keyed by field key. */
+  metadataTemplate?: Record<string, unknown>;
 }
 
 interface AuthValue {

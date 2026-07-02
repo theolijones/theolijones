@@ -11,7 +11,21 @@ interface CreateBody {
   talentId?: string;
   talentName?: string;
   talentInitials?: string;
+  metadataTemplate?: Record<string, unknown>;
 }
+
+const isPlainObject = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Drop empty/null entries so we never persist meaningless template keys. */
+export const cleanTemplate = (t: Record<string, unknown>): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(t)) {
+    if (v === null || v === undefined || v === "") continue;
+    out[k] = v;
+  }
+  return out;
+};
 
 const generateToken = (): string => {
   const bytes = randomBytes(6);
@@ -52,6 +66,13 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     return bad("talentId, talentName and talentInitials must be provided together");
   }
 
+  let metadataTemplate: Record<string, unknown> | undefined;
+  if (body.metadataTemplate !== undefined) {
+    if (!isPlainObject(body.metadataTemplate)) return bad("metadataTemplate must be an object");
+    const cleaned = cleanTemplate(body.metadataTemplate);
+    metadataTemplate = Object.keys(cleaned).length ? cleaned : undefined;
+  }
+
   const token = generateToken();
   const now = new Date().toISOString();
   const row: TokenRecord = {
@@ -62,6 +83,7 @@ export const handler: APIGatewayProxyHandlerV2WithLambdaAuthorizer<{
     talentId,
     talentName,
     talentInitials,
+    metadataTemplate,
     createdAt: now,
     expiresAt: body.expiresAt,
   };

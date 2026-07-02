@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../api/client";
 import { TALENTS, talentById } from "../data/talents";
+import { templatableFields, type SchemaField, type Schema } from "../data/metadataFields";
+import MetadataTemplate from "../components/MetadataTemplate";
 
 interface Token {
   token: string;
@@ -10,18 +12,26 @@ interface Token {
   expiresAt?: string;
   usedBy?: string;
   usedAt?: string;
+  talentId?: string;
   talentName?: string;
   talentInitials?: string;
+  metadataTemplate?: Record<string, unknown>;
 }
+
+const templateCount = (t?: Record<string, unknown>) =>
+  t ? Object.keys(t).length : 0;
 
 const Tokens = () => {
   const [list, setList] = useState<Token[]>([]);
+  const [fields, setFields] = useState<SchemaField[]>([]);
   const [note, setNote] = useState("");
   const [talentId, setTalentId] = useState("");
   const [initials, setInitials] = useState("");
+  const [template, setTemplate] = useState<Record<string, unknown>>({});
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<Token | null>(null);
 
   const onTalentChange = (id: string) => {
     setTalentId(id);
@@ -31,8 +41,12 @@ const Tokens = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api<{ tokens: Token[] }>("/admin/tokens");
-      setList(res.tokens);
+      const [tokensRes, schemaRes] = await Promise.all([
+        api<{ tokens: Token[] }>("/admin/tokens"),
+        api<Schema>("/admin/schema"),
+      ]);
+      setList(tokensRes.tokens);
+      setFields(schemaRes.fields);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -61,11 +75,13 @@ const Tokens = () => {
           talentId: talent?.id,
           talentName: talent?.name,
           talentInitials: talent ? trimmedInitials : undefined,
+          metadataTemplate: template,
         },
       });
       setNote("");
       setTalentId("");
       setInitials("");
+      setTemplate({});
       await load();
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : (e as Error).message);
@@ -83,6 +99,8 @@ const Tokens = () => {
       alert((e as Error).message);
     }
   };
+
+  const editable = templatableFields(fields);
 
   return (
     <div>
@@ -118,6 +136,15 @@ const Tokens = () => {
             {busy ? "Issuing…" : "Issue token"}
           </button>
         </div>
+
+        {editable.length > 0 && (
+          <>
+            <div className="section-label">
+              Metadata template (defaults the talent can edit in the app)
+            </div>
+            <MetadataTemplate fields={fields} value={template} onChange={setTemplate} />
+          </>
+        )}
         {err && <div className="error">{err}</div>}
       </div>
 
@@ -133,9 +160,9 @@ const Tokens = () => {
                 <th>Token</th>
                 <th>Status</th>
                 <th>Talent</th>
+                <th>Template</th>
                 <th>Note</th>
                 <th>Created</th>
-                <th>Used</th>
                 <th></th>
               </tr>
             </thead>
@@ -147,14 +174,27 @@ const Tokens = () => {
                     <span className={`badge ${t.status}`}>{t.status}</span>
                   </td>
                   <td>{t.talentName ? `${t.talentName} (${t.talentInitials})` : ""}</td>
+                  <td className="muted">
+                    {templateCount(t.metadataTemplate)
+                      ? `${templateCount(t.metadataTemplate)} field${
+                          templateCount(t.metadataTemplate) === 1 ? "" : "s"
+                        }`
+                      : "—"}
+                  </td>
                   <td>{t.note ?? ""}</td>
                   <td className="muted">{new Date(t.createdAt).toLocaleString()}</td>
-                  <td className="muted">
-                    {t.usedAt ? new Date(t.usedAt).toLocaleString() : ""}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
+                  <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                    {t.status !== "revoked" && (
+                      <button className="secondary" onClick={() => setEditing(t)}>
+                        Edit
+                      </button>
+                    )}
                     {t.status === "active" && (
-                      <button className="danger" onClick={() => revoke(t.token)}>
+                      <button
+                        className="danger"
+                        style={{ marginLeft: 8 }}
+                        onClick={() => revoke(t.token)}
+                      >
                         Revoke
                       </button>
                     )}
@@ -164,6 +204,129 @@ const Tokens = () => {
             </tbody>
           </table>
         )}
+      </div>
+
+      {editing && (
+        <EditTokenModal
+          token={editing}
+          fields={fields}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null);
+            await load();
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+interface EditModalProps {
+  token: Token;
+  fields: SchemaField[];
+  onClose: () => void;
+  onSaved: () => void | Promise<void>;
+}
+
+const EditTokenModal = ({ token, fields, onClose, onSaved }: EditModalProps) => {
+  const [note, setNote] = useState(token.note ?? "");
+  const [talentId, setTalentId] = useState(token.talentId ?? "");
+  const [initials, setInitials] = useState(token.talentInitials ?? "");
+  const [template, setTemplate] = useState<Record<string, unknown>>(
+    token.metadataTemplate ?? {}
+  );
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const onTalentChange = (id: string) => {
+    setTalentId(id);
+    setInitials(talentById(id)?.initials ?? "");
+  };
+
+  const save = async () => {
+    const talent = talentId ? talentById(talentId) : undefined;
+    const trimmedInitials = initials.trim().toUpperCase();
+    if (talent && !trimmedInitials) {
+      setErr("Initials are required when a talent is assigned");
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/admin/tokens/${token.token}`, {
+        method: "PATCH",
+        body: {
+          note: note.trim(),
+          // Empty strings clear the talent on the server.
+          talentId: talent?.id ?? "",
+          talentName: talent?.name ?? "",
+          talentInitials: talent ? trimmedInitials : "",
+          metadataTemplate: template,
+        },
+      });
+      await onSaved();
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : (e as Error).message);
+      setBusy(false);
+    }
+  };
+
+  const editable = templatableFields(fields);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>
+          Edit token <span className="mono">{token.token}</span>
+        </h3>
+        <div className="muted" style={{ marginBottom: 16 }}>
+          {token.status === "used"
+            ? "This token has been redeemed — changes also apply to the signed-up account."
+            : "Changes apply when this token is redeemed."}
+        </div>
+
+        <label>Note</label>
+        <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" />
+
+        <div className="row" style={{ marginTop: 12 }}>
+          <div style={{ flex: 2 }}>
+            <label>Talent</label>
+            <select value={talentId} onChange={(e) => onTalentChange(e.target.value)}>
+              <option value="">No talent</option>
+              {TALENTS.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ width: 110 }}>
+            <label>Initials</label>
+            <input
+              value={initials}
+              onChange={(e) => setInitials(e.target.value.toUpperCase())}
+              disabled={!talentId}
+            />
+          </div>
+        </div>
+
+        {editable.length > 0 && (
+          <>
+            <div className="section-label">Metadata template</div>
+            <MetadataTemplate fields={fields} value={template} onChange={setTemplate} />
+          </>
+        )}
+
+        {err && <div className="error">{err}</div>}
+
+        <div className="actions">
+          <button className="secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button onClick={save} disabled={busy}>
+            {busy ? "Saving…" : "Save changes"}
+          </button>
+        </div>
       </div>
     </div>
   );

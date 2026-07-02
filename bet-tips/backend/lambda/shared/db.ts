@@ -32,6 +32,12 @@ export interface UserRecord {
   talentId?: string;
   talentName?: string;
   talentInitials?: string;
+  /**
+   * Admin-set metadata defaults inherited from the signup token. Keyed by
+   * schema field key, holding the app's control value (sport key, competition
+   * string, tipType id, text, etc). Pre-fills the app form as editable defaults.
+   */
+  metadataTemplate?: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -47,6 +53,8 @@ export interface TokenRecord {
   talentId?: string;
   talentName?: string;
   talentInitials?: string;
+  /** Metadata defaults copied onto the user at signup (see UserRecord.metadataTemplate). */
+  metadataTemplate?: Record<string, unknown>;
   createdAt: string;
   expiresAt?: string;
 }
