@@ -21,15 +21,15 @@ export const buckets = {
 export type UserRole = "admin" | "user";
 
 /**
- * A named, admin-authored metadata template attached to a user. `values` holds
- * the app's control representation for the templatable input fields (sport key,
- * competition string, tipType id, text, boolean) — everything except the
- * per-submission Bet ID, which the talent enters and the app injects at submit.
+ * A named, admin-authored metadata template attached to a user. `metadata` is a
+ * complete, fixed COP metadata object uploaded as a JSON file — every field is
+ * baked in. The only value filled at submit time is the Bet ID, which the app
+ * writes into the BET_ID_FIELD_KEY key before shipping the JSON verbatim.
  */
 export interface NamedTemplate {
   id: string;
   name: string;
-  values: Record<string, unknown>;
+  metadata: Record<string, unknown>;
 }
 
 export interface UserRecord {

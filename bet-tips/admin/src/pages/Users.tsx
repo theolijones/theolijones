@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
-import {
-  templatableFields,
-  type NamedTemplate,
-  type Schema,
-  type SchemaField,
-} from "../data/metadataFields";
-import MetadataTemplate from "../components/MetadataTemplate";
+
+/** Key of the Bet ID field the mobile app fills in at submit. Mirrors the backend. */
+const BET_ID_FIELD_KEY = "FeedTipId";
+
+interface NamedTemplate {
+  id: string;
+  name: string;
+  metadata: Record<string, unknown>;
+}
 
 interface User {
   userId: string;
@@ -25,7 +27,6 @@ const newId = () =>
 
 const Users = () => {
   const [list, setList] = useState<User[]>([]);
-  const [fields, setFields] = useState<SchemaField[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<User | null>(null);
@@ -33,12 +34,8 @@ const Users = () => {
   const load = async () => {
     setLoading(true);
     try {
-      const [usersRes, schemaRes] = await Promise.all([
-        api<{ users: User[] }>("/admin/users"),
-        api<Schema>("/admin/schema"),
-      ]);
+      const usersRes = await api<{ users: User[] }>("/admin/users");
       setList(usersRes.users);
-      setFields(schemaRes.fields);
     } catch (e) {
       setErr((e as Error).message);
     } finally {
@@ -101,7 +98,6 @@ const Users = () => {
       {editing && (
         <TemplatesModal
           user={editing}
-          fields={fields}
           onClose={() => setEditing(null)}
           onSaved={async () => {
             setEditing(null);
@@ -115,23 +111,19 @@ const Users = () => {
 
 interface ModalProps {
   user: User;
-  fields: SchemaField[];
   onClose: () => void;
   onSaved: () => void | Promise<void>;
 }
 
-const TemplatesModal = ({ user, fields, onClose, onSaved }: ModalProps) => {
+const TemplatesModal = ({ user, onClose, onSaved }: ModalProps) => {
   const [templates, setTemplates] = useState<NamedTemplate[]>(
-    // Deep-ish clone so edits don't mutate the list until saved.
-    user.metadataTemplates.map((t) => ({ ...t, values: { ...t.values } }))
+    user.metadataTemplates.map((t) => ({ ...t }))
   );
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const editable = templatableFields(fields);
-
   const addTemplate = () =>
-    setTemplates((prev) => [...prev, { id: newId(), name: "", values: {} }]);
+    setTemplates((prev) => [...prev, { id: newId(), name: "", metadata: {} }]);
 
   const updateTemplate = (id: string, patch: Partial<NamedTemplate>) =>
     setTemplates((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -140,7 +132,6 @@ const TemplatesModal = ({ user, fields, onClose, onSaved }: ModalProps) => {
     setTemplates((prev) => prev.filter((t) => t.id !== id));
 
   const save = async () => {
-    // Local validation mirrors the server so the admin gets fast feedback.
     const names = templates.map((t) => t.name.trim().toLowerCase());
     if (templates.some((t) => !t.name.trim())) {
       setErr("Every template needs a name.");
@@ -148,6 +139,10 @@ const TemplatesModal = ({ user, fields, onClose, onSaved }: ModalProps) => {
     }
     if (new Set(names).size !== names.length) {
       setErr("Template names must be unique.");
+      return;
+    }
+    if (templates.some((t) => Object.keys(t.metadata).length === 0)) {
+      setErr("Every template needs a metadata JSON file uploaded.");
       return;
     }
     setBusy(true);
@@ -159,7 +154,7 @@ const TemplatesModal = ({ user, fields, onClose, onSaved }: ModalProps) => {
           templates: templates.map((t) => ({
             id: t.id,
             name: t.name.trim(),
-            values: t.values,
+            metadata: t.metadata,
           })),
         },
       });
@@ -178,8 +173,9 @@ const TemplatesModal = ({ user, fields, onClose, onSaved }: ModalProps) => {
           <span className="mono">{user.sportsbetUsername ?? user.userId}</span>
         </h3>
         <div className="muted" style={{ marginBottom: 16 }}>
-          The talent picks one of these in the app, enters a Bet ID, and submits. The Bet ID
-          fills the <span className="mono">FeedTipId</span> field automatically.
+          Each template is a fixed metadata JSON. In the app the talent picks one and enters a
+          Bet ID, which is written into the <span className="mono">{BET_ID_FIELD_KEY}</span> field
+          before the metadata is uploaded with the video.
         </div>
 
         {templates.length === 0 && (
@@ -189,30 +185,12 @@ const TemplatesModal = ({ user, fields, onClose, onSaved }: ModalProps) => {
         )}
 
         {templates.map((t) => (
-          <div key={t.id} className="template-block">
-            <div className="row" style={{ alignItems: "flex-end" }}>
-              <div style={{ flex: 1 }}>
-                <label>Template name</label>
-                <input
-                  value={t.name}
-                  placeholder="e.g. AFL Best Bet"
-                  onChange={(e) => updateTemplate(t.id, { name: e.target.value })}
-                />
-              </div>
-              <button className="danger" onClick={() => removeTemplate(t.id)}>
-                Delete
-              </button>
-            </div>
-            {editable.length > 0 ? (
-              <MetadataTemplate
-                fields={fields}
-                value={t.values}
-                onChange={(values) => updateTemplate(t.id, { values })}
-              />
-            ) : (
-              <div className="muted">No templatable fields in the current schema.</div>
-            )}
-          </div>
+          <TemplateRow
+            key={t.id}
+            template={t}
+            onChange={(patch) => updateTemplate(t.id, patch)}
+            onRemove={() => removeTemplate(t.id)}
+          />
         ))}
 
         <button className="secondary" style={{ marginTop: 8 }} onClick={addTemplate}>
@@ -230,6 +208,88 @@ const TemplatesModal = ({ user, fields, onClose, onSaved }: ModalProps) => {
           </button>
         </div>
       </div>
+    </div>
+  );
+};
+
+interface RowProps {
+  template: NamedTemplate;
+  onChange: (patch: Partial<NamedTemplate>) => void;
+  onRemove: () => void;
+}
+
+const TemplateRow = ({ template, onChange, onRemove }: RowProps) => {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [fileErr, setFileErr] = useState<string | null>(null);
+  const fieldCount = Object.keys(template.metadata).length;
+  const hasBetId = BET_ID_FIELD_KEY in template.metadata;
+
+  const onFile = async (file: File | undefined) => {
+    setFileErr(null);
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        throw new Error("JSON must be an object");
+      }
+      const patch: Partial<NamedTemplate> = { metadata: parsed as Record<string, unknown> };
+      // Default the template name to the filename (sans extension) on first upload.
+      if (!template.name.trim()) patch.name = file.name.replace(/\.json$/i, "");
+      onChange(patch);
+    } catch (e) {
+      setFileErr(`Couldn't read ${file.name}: ${(e as Error).message}`);
+    }
+  };
+
+  return (
+    <div className="template-block">
+      <div className="row" style={{ alignItems: "flex-end" }}>
+        <div style={{ flex: 1 }}>
+          <label>Template name</label>
+          <input
+            value={template.name}
+            placeholder="e.g. AFL Best Bet"
+            onChange={(e) => onChange({ name: e.target.value })}
+          />
+        </div>
+        <button className="danger" onClick={onRemove}>
+          Delete
+        </button>
+      </div>
+
+      <div className="template-file">
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json,.json"
+          style={{ display: "none" }}
+          onChange={(e) => void onFile(e.target.files?.[0])}
+        />
+        <button className="secondary" onClick={() => fileRef.current?.click()}>
+          {fieldCount ? "Replace JSON file" : "Upload JSON file"}
+        </button>
+        <span className="muted">
+          {fieldCount ? (
+            <>
+              {fieldCount} field{fieldCount === 1 ? "" : "s"} loaded
+              {hasBetId ? (
+                <> · <span className="mono">{BET_ID_FIELD_KEY}</span> present</>
+              ) : (
+                <>
+                  {" "}
+                  · <span style={{ color: "var(--warn, #d97706)" }}>
+                    no <span className="mono">{BET_ID_FIELD_KEY}</span> field (the app adds it)
+                  </span>
+                </>
+              )}
+            </>
+          ) : (
+            "No file uploaded yet"
+          )}
+        </span>
+      </div>
+      {fileErr && <div className="error">{fileErr}</div>}
     </div>
   );
 };

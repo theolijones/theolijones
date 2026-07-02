@@ -239,28 +239,6 @@ th {
 }
 .link-like:hover { color: var(--accent); background: transparent; }
 
-/* Metadata template editor */
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-.template-field { margin: 0; }
-.template-field > span {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.section-label {
-  margin: 16px 0 8px;
-  color: var(--muted);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
 /* A single named template inside the Users template manager */
 .template-block {
   border: 1px solid var(--border);
@@ -269,7 +247,14 @@ th {
   margin-bottom: 12px;
   background: var(--panel-2);
 }
-.template-block .template-grid { margin-top: 12px; }
+.template-file {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
 
 /* Edit modal */
 .modal-backdrop {

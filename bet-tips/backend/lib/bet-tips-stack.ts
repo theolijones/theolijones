@@ -207,12 +207,6 @@ export class BetTipsStack extends cdk.Stack {
     uploadsTable.grantReadWriteData(uploadsReviewFn);
     usersTable.grantReadData(uploadsReviewFn);
 
-    const schemaGetFn = fn("SchemaGetFn", "schema-get.ts");
-    schemaTable.grantReadData(schemaGetFn);
-
-    const schemaUpdateFn = fn("SchemaUpdateFn", "schema-update.ts");
-    schemaTable.grantReadWriteData(schemaUpdateFn);
-
     const libraryListFn = fn("LibraryListFn", "library-list.ts");
     libraryTable.grantReadData(libraryListFn);
     mediaBucket.grantRead(libraryListFn);
@@ -273,8 +267,6 @@ export class BetTipsStack extends cdk.Stack {
     protectedRoute("/admin/tokens/{token}", apigw.HttpMethod.PATCH, tokensUpdateFn);
     protectedRoute("/admin/uploads", apigw.HttpMethod.GET, uploadsListFn);
     protectedRoute("/admin/uploads/{uploadId}", apigw.HttpMethod.PATCH, uploadsReviewFn);
-    protectedRoute("/admin/schema", apigw.HttpMethod.GET, schemaGetFn);
-    protectedRoute("/admin/schema", apigw.HttpMethod.PUT, schemaUpdateFn);
     protectedRoute("/library/assets", apigw.HttpMethod.GET, libraryListFn);
     protectedRoute("/admin/library/assets", apigw.HttpMethod.POST, libraryCreateFn);
     protectedRoute("/admin/library/assets/{assetId}", apigw.HttpMethod.PATCH, libraryUpdateFn);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -15,17 +15,9 @@ import * as Clipboard from "expo-clipboard";
 import { useNavigation, useRoute, type RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "../navigation/types";
-import { fetchSchema, type SchemaField } from "../api/schema";
 import { submitUpload } from "../api/uploads";
 import { useAuth } from "../auth/AuthContext";
-import {
-  BET_ID_FIELD_KEY,
-  buildVideoMetadata,
-  effectiveControl,
-  missingRequired,
-  type FieldValue,
-  type NamedTemplate,
-} from "../api/metadata";
+import { applyBetId, type NamedTemplate } from "../api/metadata";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Metadata">;
 type MetadataRoute = RouteProp<RootStackParamList, "Metadata">;
@@ -36,85 +28,30 @@ const MetadataScreen = () => {
   const { videoUri, videoContentType, edl, assetRefs, background } = route.params;
   const { me } = useAuth();
 
-  const [fields, setFields] = useState<SchemaField[] | null>(null);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const templates = useMemo<NamedTemplate[]>(() => me?.metadataTemplates ?? [], [me]);
+
   const [betId, setBetId] = useState("");
-  const [templateId, setTemplateId] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState<string | null>(
+    templates.length === 1 ? templates[0].id : null
+  );
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [submitErr, setSubmitErr] = useState<string | null>(null);
-
-  const templates = useMemo<NamedTemplate[]>(() => me?.metadataTemplates ?? [], [me]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const res = await fetchSchema();
-        if (cancelled) return;
-        setFields(res.fields);
-      } catch (e) {
-        if (!cancelled) setLoadErr((e as Error).message);
-      }
-    };
-    void load();
-    // Preselect the only template so a single-template user can just enter a Bet ID.
-    if (templates.length === 1) setTemplateId(templates[0].id);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const selected = useMemo(
     () => templates.find((t) => t.id === templateId) ?? null,
     [templates, templateId]
   );
 
-  // Talent-derived fields (GenericContentType, TalentOrShowList) require an
-  // assigned talent on the account.
-  const needsTalent = useMemo(
-    () => !!fields?.some((f) => (f.source ?? "input") === "derived"),
-    [fields]
-  );
-  const talentMissing = needsTalent && (!me?.talentId || !me?.talentInitials);
-
-  // Merge the chosen template with the entered Bet ID and a per-submission date
-  // for any date field (the talent no longer sees the full form).
-  const mergedValues = useMemo<Record<string, FieldValue>>(() => {
-    if (!fields || !selected) return {};
-    const out: Record<string, FieldValue> = { ...(selected.values as Record<string, FieldValue>) };
-    for (const f of fields) {
-      if ((f.source ?? "input") === "input" && effectiveControl(f) === "date") {
-        out[f.key] = new Date();
-      }
-    }
-    out[BET_ID_FIELD_KEY] = betId.trim();
-    return out;
-  }, [fields, selected, betId]);
-
-  const missing = useMemo(
-    () => (fields && selected ? missingRequired(fields, mergedValues) : []),
-    [fields, selected, mergedValues]
-  );
-
-  const canSubmit =
-    !!fields &&
-    !talentMissing &&
-    !!selected &&
-    betId.trim().length > 0 &&
-    missing.length === 0 &&
-    !submitting;
+  const canSubmit = !!selected && betId.trim().length > 0 && !submitting;
 
   const submit = async () => {
-    if (!fields || !selected || !canSubmit) return;
+    if (!selected || !canSubmit) return;
     setSubmitting(true);
     setSubmitErr(null);
     setProgress(0);
     try {
-      const metadata = buildVideoMetadata(fields, mergedValues, {
-        talentId: me?.talentId,
-        talentInitials: me?.talentInitials,
-      });
+      const metadata = applyBetId(selected, betId.trim());
       await submitUpload({
         videoUri,
         videoContentType,
@@ -139,29 +76,6 @@ const MetadataScreen = () => {
     if (text) setBetId(text.trim());
   };
 
-  if (!fields && !loadErr) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.center}>
-          <ActivityIndicator color="#e2e8f0" />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  if (loadErr) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.center}>
-          <Text style={styles.error}>{loadErr}</Text>
-          <Pressable style={styles.secondaryBtn} onPress={() => nav.goBack()}>
-            <Text style={styles.secondaryText}>Back</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -173,12 +87,6 @@ const MetadataScreen = () => {
           <Text style={styles.subtitle}>
             Enter the Bet ID and choose a template, then submit for review.
           </Text>
-
-          {talentMissing && (
-            <Text style={styles.error}>
-              Your account has no talent assigned. Ask an admin to set it before submitting.
-            </Text>
-          )}
 
           <View style={styles.field}>
             <Text style={styles.label}>
@@ -228,13 +136,6 @@ const MetadataScreen = () => {
             )}
           </View>
 
-          {selected && missing.length > 0 && (
-            <Text style={styles.error}>
-              This template is missing required fields ({missing.map((f) => f.label).join(", ")}).
-              Ask an admin to complete it.
-            </Text>
-          )}
-
           {submitErr && <Text style={styles.error}>{submitErr}</Text>}
         </ScrollView>
 
@@ -266,7 +167,6 @@ const MetadataScreen = () => {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#0f172a" },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 24, gap: 16 },
   scroll: { padding: 20, paddingBottom: 32 },
   title: { color: "#e2e8f0", fontSize: 24, fontWeight: "700", marginBottom: 4 },
   subtitle: { color: "#94a3b8", fontSize: 14, marginBottom: 20, lineHeight: 20 },

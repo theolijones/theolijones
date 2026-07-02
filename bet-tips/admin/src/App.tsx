@@ -5,7 +5,6 @@ import Login from "./pages/Login";
 import Tokens from "./pages/Tokens";
 import Users from "./pages/Users";
 import Uploads from "./pages/Uploads";
-import Schema from "./pages/Schema";
 import Assets from "./pages/Assets";
 
 const App = () => {
@@ -25,7 +24,6 @@ const App = () => {
         <Route path="/tokens" element={<Tokens />} />
         <Route path="/users" element={<Users />} />
         <Route path="/uploads" element={<Uploads />} />
-        <Route path="/schema" element={<Schema />} />
         <Route path="/assets" element={<Assets />} />
         <Route path="*" element={<Navigate to="/tokens" replace />} />
       </Routes>
