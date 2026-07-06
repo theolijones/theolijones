@@ -13,7 +13,8 @@
       "bundleIdentifier": "au.com.bettips.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
-      }
+      },
+      "buildNumber": "3"
     },
     "android": {
       "package": "au.com.bettips.mobile",
