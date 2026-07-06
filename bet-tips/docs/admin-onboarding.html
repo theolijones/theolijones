@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Bet Tips — Admin: Onboarding a New Creator</title>
+<style>
+  @page { size: A4; margin: 15mm 15mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    color: #0f172a;
+    line-height: 1.5;
+    font-size: 12px;
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .header {
+    background: #0f172a;
+    color: #fff;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
+  }
+  .header h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.3px; }
+  .header p { margin: 0; color: #94a3b8; font-size: 12.5px; }
+  .lead { color: #334155; margin: 0 0 16px; }
+  .glance {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+  }
+  .glance > b { display: block; margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; color: #475569; }
+  .glance ol { margin: 0; padding-left: 20px; }
+  .glance li { margin-bottom: 2px; }
+  .part {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #2563eb;
+    font-weight: 700;
+    margin: 18px 0 2px;
+  }
+  .step {
+    display: flex;
+    gap: 13px;
+    padding: 12px 0;
+    border-top: 1px solid #e2e8f0;
+    page-break-inside: avoid;
+  }
+  .num {
+    flex: 0 0 28px;
+    height: 28px;
+    width: 28px;
+    background: #3b82f6;
+    color: #fff;
+    border-radius: 50%;
+    font-weight: 700;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .step h2 { margin: 1px 0 5px; font-size: 14px; }
+  .step p, .step ul { margin: 0 0 6px; }
+  .step ul { padding-left: 18px; }
+  .cmd {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 7px;
+    padding: 8px 12px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    margin: 4px 0 6px;
+    line-height: 1.45;
+  }
+  code {
+    background: #eef2ff;
+    color: #3730a3;
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, monospace;
+    font-size: 11px;
+  }
+  .note {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #1e40af;
+    margin-top: 4px;
+  }
+  .warn {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: #713f12;
+    margin: 4px 0 0;
+  }
+  .footer {
+    margin-top: 18px;
+    padding-top: 10px;
+    border-top: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Admin Guide — Onboarding a New Creator</h1>
+    <p>Getting a new talent installed on Bet Tips and set up with templates</p>
+  </div>
+
+  <p class="lead">
+    Onboarding is two separate jobs: <b>getting the app onto their iPhone</b> (Part A) and
+    <b>giving them an account + templates</b> (Part B). The app isn't on the App Store yet, so
+    installs go through EAS ad-hoc distribution — which means each new device is registered once,
+    then you rebuild.
+  </p>
+
+  <div class="glance">
+    <b>At a glance</b>
+    <ol>
+      <li>Register the creator's iPhone (<code>eas device:create</code>) — they open a link on their phone</li>
+      <li>Rebuild the app so their device is included (<code>eas build --profile preview</code>)</li>
+      <li>Send them the install link from the build page</li>
+      <li>Issue a signup token in the admin app and send it to them</li>
+      <li>After they sign up, upload their metadata template JSON(s) in the admin app</li>
+    </ol>
+  </div>
+
+  <div class="part">Part A — Get the app onto their iPhone</div>
+
+  <div class="step">
+    <div class="num">1</div>
+    <div>
+      <h2>Register their device</h2>
+      <p>In Terminal, from the mobile project:</p>
+      <div class="cmd">cd ~/betting-tips-video-app/bet-tips/mobile
+eas device:create</div>
+      <ul>
+        <li>Choose <b>“Website”</b> when asked for the registration method.</li>
+        <li>It prints a <b>URL + QR code</b>. Send the URL to the creator; they open it <b>on their iPhone</b> and install the profile it offers.</li>
+        <li>Run <code>eas device:list</code> to confirm the device appears. You can register several people before rebuilding.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">2</div>
+    <div>
+      <h2>Rebuild so their device is included</h2>
+      <p>Ad-hoc builds embed the allowed-device list, so a device registered after a build isn't covered until you rebuild:</p>
+      <div class="cmd">eas build -p ios --profile preview</div>
+      <p>EAS regenerates the provisioning profile with all registered devices (accept the Apple prompt if it appears). Takes ~5 minutes.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">3</div>
+    <div>
+      <h2>Send them the app</h2>
+      <ul>
+        <li>Open the finished build on <b>expo.dev</b> → Projects → <b>bet-tips</b> → Builds.</li>
+        <li>Share that build page link. The creator opens it <b>on their iPhone</b> and taps <b>Install</b> — installs over the air, no cable.</li>
+      </ul>
+      <div class="warn">
+        <b>TestFlight isn't available yet.</b> Apple now requires an Xcode 26 build, which the current Expo SDK 51 can't compile. Until an SDK upgrade, use this ad-hoc flow (cap: 100 devices/year, one rebuild per new device).
+      </div>
+    </div>
+  </div>
+
+  <div class="part">Part B — Give them an account &amp; templates</div>
+
+  <div class="step">
+    <div class="num">4</div>
+    <div>
+      <h2>Issue a signup token</h2>
+      <p>Open the admin app (run <code>npm run dev</code> in <code>bet-tips/admin</code>, then visit the local URL it prints, e.g. <code>http://localhost:5174</code>).</p>
+      <ul>
+        <li>Go to <b>Signup Tokens</b> → optionally pick the creator's <b>talent</b> (sets initials for content-type fields) → <b>Issue token</b>.</li>
+        <li>Send the generated token to the creator. It's <b>single-use</b>.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">5</div>
+    <div>
+      <h2>They sign up</h2>
+      <p>The creator opens Bet Tips and signs up with their <b>Sportsbet username</b> + the token. Their account now exists on the backend.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">6</div>
+    <div>
+      <h2>Upload their metadata templates</h2>
+      <ul>
+        <li>Admin app → <b>Users</b> → find the creator → <b>Manage templates</b>.</li>
+        <li><b>Add template</b> → upload a <b>metadata JSON file</b> → give it a clear name (e.g. “AFL Best Bet”) → repeat for each template → <b>Save</b>.</li>
+      </ul>
+      <div class="note">
+        Each template is a fixed, complete metadata JSON. In the app the creator only enters the <b>Bet ID</b>, which is written into the <code>FeedTipId</code> field before the metadata is uploaded with their video. The row flags whether a <code>FeedTipId</code> field is present in your file.
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    That's it — the creator can now record, pick a template, enter a Bet ID, and submit. Pair this with the creator-facing “Getting Started” guide when you send their links and token.
+  </div>
+</body>
+</html>
