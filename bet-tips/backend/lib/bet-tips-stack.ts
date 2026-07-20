@@ -151,6 +151,16 @@ export class BetTipsStack extends cdk.Stack {
     const usersTemplatesFn = fn("UsersTemplatesFn", "users-templates.ts");
     usersTable.grantReadWriteData(usersTemplatesFn);
 
+    const adminsListFn = fn("AdminsListFn", "admins-list.ts");
+    usersTable.grantReadData(adminsListFn);
+
+    // Queries the byEmail GSI to reject duplicates, then writes the new account.
+    const adminsCreateFn = fn("AdminsCreateFn", "admins-create.ts");
+    usersTable.grantReadWriteData(adminsCreateFn);
+
+    const adminsPasswordFn = fn("AdminsPasswordFn", "admins-password.ts");
+    usersTable.grantReadWriteData(adminsPasswordFn);
+
     const tokensListFn = fn("TokensListFn", "tokens-list.ts");
     tokensTable.grantReadData(tokensListFn);
 
@@ -263,6 +273,9 @@ export class BetTipsStack extends cdk.Stack {
     protectedRoute("/uploads/{uploadId}/assets", apigw.HttpMethod.POST, uploadsAssetFn);
     protectedRoute("/admin/users", apigw.HttpMethod.GET, usersListFn);
     protectedRoute("/admin/users/{userId}/templates", apigw.HttpMethod.PUT, usersTemplatesFn);
+    protectedRoute("/admin/admins", apigw.HttpMethod.GET, adminsListFn);
+    protectedRoute("/admin/admins", apigw.HttpMethod.POST, adminsCreateFn);
+    protectedRoute("/admin/admins/{userId}/password", apigw.HttpMethod.PUT, adminsPasswordFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.GET, tokensListFn);
     protectedRoute("/admin/tokens", apigw.HttpMethod.POST, tokensCreateFn);
     protectedRoute("/admin/tokens/{token}", apigw.HttpMethod.DELETE, tokensRevokeFn);
