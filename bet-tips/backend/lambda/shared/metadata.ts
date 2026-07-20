@@ -8,6 +8,26 @@ export const isPlainObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
 
 /**
+ * Name a downloaded video after its Bet ID — the one value that is unique per
+ * submission (TipType is fixed by the template, so it would collide across every
+ * video made from it). Keeps the source extension, since uploads are a mix of
+ * .mp4 and .mov. Falls back to the S3 key's basename when the Bet ID is missing.
+ * Kept in sync with `videoFilename` in the admin app.
+ */
+export const downloadFilename = (
+  metadata: Record<string, unknown> | undefined,
+  key: string
+): string => {
+  const base = key.split("/").pop()?.trim() || "video.mp4";
+  const betId = metadata?.[BET_ID_FIELD_KEY];
+  if (typeof betId !== "string" && typeof betId !== "number") return base;
+  const safe = String(betId).trim().replace(/[^\w.-]+/g, "_");
+  if (!safe) return base;
+  const ext = base.includes(".") ? base.slice(base.lastIndexOf(".")) : ".mp4";
+  return `${safe}${ext}`;
+};
+
+/**
  * Validate and normalise an incoming array of named templates. Throws an Error
  * (message safe to surface as a 400) on any structural problem. Names are
  * trimmed and must be non-empty and unique (case-insensitive); `metadata` must

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api/client";
+import { downloadMetadata, hasMetadata } from "../data/metadata";
 
 type RenderStatus = "not_required" | "queued" | "rendering" | "done" | "failed";
 
@@ -159,11 +160,24 @@ const Uploads = () => {
               <MetadataTable metadata={u.metadata} />
             )}
 
-            {u.videoUrl && (
+            {(u.videoUrl || hasMetadata(u.metadata)) && (
               <div className="row" style={{ gap: 16, marginBottom: 8 }}>
-                <a href={u.videoUrl} target="_blank" rel="noreferrer">
-                  Download video
-                </a>
+                {u.videoUrl && (
+                  <a href={u.videoUrl} target="_blank" rel="noreferrer">
+                    Download video
+                  </a>
+                )}
+                {hasMetadata(u.metadata) && (
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      downloadMetadata(u.metadata!, u.videoKey);
+                    }}
+                  >
+                    Download metadata
+                  </a>
+                )}
               </div>
             )}
 

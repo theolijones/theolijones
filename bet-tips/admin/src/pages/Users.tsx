@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../api/client";
-
-/** Key of the Bet ID field the mobile app fills in at submit. Mirrors the backend. */
-const BET_ID_FIELD_KEY = "FeedTipId";
+import { BET_ID_FIELD_KEY } from "../data/metadata";
 
 interface NamedTemplate {
   id: string;
