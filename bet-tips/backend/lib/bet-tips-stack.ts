@@ -200,6 +200,8 @@ export class BetTipsStack extends cdk.Stack {
     const uploadsCompleteFn = fn("UploadsCompleteFn", "uploads-complete.ts");
     uploadsTable.grantReadWriteData(uploadsCompleteFn);
     mediaBucket.grantRead(uploadsCompleteFn);
+    // Writes the metadata.json sidecar next to the video (added in 4b5bb0d).
+    mediaBucket.grantPut(uploadsCompleteFn);
     uploadsCompleteFn.addEnvironment("RENDER_FN_NAME", renderWorkerFn.functionName);
     renderWorkerFn.grantInvoke(uploadsCompleteFn);
 
