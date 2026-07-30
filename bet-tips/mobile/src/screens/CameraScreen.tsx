@@ -17,6 +17,7 @@ import {
   useMicrophonePermission,
   useSkiaFrameProcessor,
   VisionCameraProxy,
+  type Orientation,
 } from "react-native-vision-camera";
 import { Skia } from "@shopify/react-native-skia";
 import * as ImagePicker from "expo-image-picker";
@@ -55,6 +56,13 @@ const bgContentTypeFromMime = (mime?: string): ImageAssetContentType => {
   return "image/jpeg";
 };
 
+// The UI is locked to portrait (app.json), but VisionCamera's output
+// orientation tracks the *physical* device via CMMotionManager, so turning the
+// phone silently changes the recorded aspect. Surface it so the talent knows
+// which format they're about to shoot.
+const isLandscape = (o: Orientation): boolean =>
+  o === "landscape-left" || o === "landscape-right";
+
 
 const CameraScreen = () => {
   const nav = useNavigation<Nav>();
@@ -65,6 +73,13 @@ const CameraScreen = () => {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [background, setBackground] = useState<BackgroundChoice | null>(null);
+  const [orientation, setOrientation] = useState<Orientation>("portrait");
+  // Orientation as it was when recording started. The recorded file's aspect is
+  // fixed at that moment, so the chip must stop following the device once the
+  // take is underway or it would lie about the output.
+  const [lockedOrientation, setLockedOrientation] = useState<Orientation | null>(
+    null
+  );
   const [bgSheet, setBgSheet] = useState<{
     open: boolean;
     loading: boolean;
@@ -243,11 +258,13 @@ const CameraScreen = () => {
       }
     }
     cutoutSession.current = { active: useCutout };
+    setLockedOrientation(orientation);
     setRecording(true);
     startTimer();
     camera.current.startRecording({
       onRecordingFinished: (video) => {
         setRecording(false);
+        setLockedOrientation(null);
         stopTimer();
         const uri = video.path.startsWith("file://") ? video.path : `file://${video.path}`;
         if (cutoutSession.current?.active) {
@@ -259,6 +276,7 @@ const CameraScreen = () => {
       onRecordingError: (e) => {
         console.warn("recording error", e);
         setRecording(false);
+        setLockedOrientation(null);
         stopTimer();
         // Make sure the cutout writer is closed even on VC error so
         // resources don't leak across retries.
@@ -275,6 +293,8 @@ const CameraScreen = () => {
     if (!camera.current || !recording) return;
     camera.current.stopRecording().catch((e) => console.warn("stopRecording", e));
   };
+
+  const shootingOrientation = lockedOrientation ?? orientation;
 
   const toggleFacing = () => setFacing((f) => (f === "back" ? "front" : "back"));
 
@@ -334,20 +354,31 @@ const CameraScreen = () => {
         pixelFormat="rgb"
         videoHdr={false}
         enableBufferCompression={false}
+        onOutputOrientationChanged={setOrientation}
       />
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.topRow}>
           <Pressable onPress={() => nav.goBack()} disabled={recording} hitSlop={12}>
             <Text style={[styles.link, recording && styles.disabled]}>Cancel</Text>
           </Pressable>
-          {recording ? (
-            <View style={styles.recordPill}>
-              <View style={styles.recordDot} />
-              <Text style={styles.recordText}>{fmt(elapsed)}</Text>
-            </View>
-          ) : (
-            <Text style={styles.hint}>Up to {MAX_SECONDS}s</Text>
-          )}
+          <View style={styles.topCenter}>
+            {recording ? (
+              <View style={styles.recordPill}>
+                <View style={styles.recordDot} />
+                <Text style={styles.recordText}>{fmt(elapsed)}</Text>
+              </View>
+            ) : (
+              <Text style={styles.hint}>Up to {MAX_SECONDS}s</Text>
+            )}
+            {/* While recording this shows the orientation captured at record
+                start, not the live one — rotating mid-take does not change the
+                output format (the writer's transform is fixed at setup). */}
+            <Text style={styles.formatText}>
+              {isLandscape(shootingOrientation)
+                ? "Landscape · 16:9"
+                : "Portrait · 9:16"}
+            </Text>
+          </View>
           <Pressable onPress={toggleFacing} disabled={recording} hitSlop={12}>
             <Text style={[styles.link, recording && styles.disabled]}>Flip</Text>
           </Pressable>
@@ -493,6 +524,13 @@ const styles = StyleSheet.create({
   link: { color: "#f8fafc", fontSize: 16, fontWeight: "500" },
   disabled: { opacity: 0.4 },
   hint: { color: "#cbd5e1", fontSize: 13 },
+  topCenter: { alignItems: "center", gap: 4 },
+  formatText: {
+    color: "#94a3b8",
+    fontSize: 11,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
+  },
   recordPill: {
     flexDirection: "row",
     alignItems: "center",

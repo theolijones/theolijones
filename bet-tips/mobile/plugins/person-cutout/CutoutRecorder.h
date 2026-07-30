@@ -30,6 +30,18 @@ NS_ASSUME_NONNULL_BEGIN
          orientation:(UIImageOrientation)orientation
           isMirrored:(BOOL)isMirrored;
 
+// The orientation the writer was set up with, or -1 when no writer is open.
+//
+// The writer's `transform` is fixed at setup, so the recorded file's display
+// orientation cannot change mid-take. PersonCutoutPlugin reads this to pin the
+// background's rotation to the same value for the duration of the recording —
+// otherwise rotating the phone mid-take re-fits the BG and it visibly spins 90°
+// while the person stays put.
+//
+// Returns an int rather than UIImageOrientation so -1 is representable. Backed
+// by an atomic, safe to read from the frame-processor thread.
+- (int)lockedOrientation;
+
 @end
 
 NS_ASSUME_NONNULL_END

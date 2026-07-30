@@ -15,6 +15,7 @@ import {
 import type { TextStyle } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ResizeMode, Video } from "expo-av";
+import type { VideoReadyForDisplayEvent } from "expo-av";
 import * as ImagePicker from "expo-image-picker";
 import { listLibraryAssets, type LibraryAsset } from "../api/library";
 import {
@@ -96,8 +97,17 @@ interface EditorImageLayer extends EditorLayerCommon {
 
 type EditorLayer = EditorTextLayer | EditorImageLayer;
 
-const CANVAS_W = 1080;
-const CANVAS_H = 1920;
+// Fallback canvas dimensions, used only until the video reports its real size
+// via `onReadyForDisplay`. Portrait 9:16 was the hardcoded value before
+// landscape support, so falling back to it keeps portrait behaviour identical
+// if the event somehow hasn't fired before the user taps Next.
+const DEFAULT_VIDEO_W = 1080;
+const DEFAULT_VIDEO_H = 1920;
+
+// h264 + yuv420p (what the render-worker encodes to) rejects odd dimensions,
+// and the EDL's width/height go straight into ffmpeg's `scale=W:H`. Camera
+// output is always even, so this is insurance rather than a live fix.
+const toEven = (n: number): number => Math.max(2, Math.round(n / 2) * 2);
 
 const newTextLayer = (id: string): EditorTextLayer => ({
   id,
@@ -137,6 +147,19 @@ const EditorScreen = () => {
   const [layers, setLayers] = useState<EditorLayer[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [canvas, setCanvas] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  // Size of the letterbox area the canvas is centred in.
+  const [wrap, setWrap] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  // The video's real display dimensions, which become the EDL canvas. Sourced
+  // from expo-av's onReadyForDisplay because that applies the asset's
+  // preferredTransform before reporting (see EXVideoView.m) — i.e. it gives
+  // post-rotation dims. VisionCamera's VideoFile.width/height and
+  // CutoutRecorder's writer dims are both *buffer* dims (sensor orientation)
+  // and would each need their own ±90° swap; this one handler covers the
+  // cutout and non-cutout recording paths identically.
+  const [videoSize, setVideoSize] = useState<{ w: number; h: number }>({
+    w: DEFAULT_VIDEO_W,
+    h: DEFAULT_VIDEO_H,
+  });
   const [durationMs, setDurationMs] = useState<number>(0);
   const [stickerSheet, setStickerSheet] = useState<{
     open: boolean;
@@ -162,9 +185,39 @@ const EditorScreen = () => {
     setCanvas({ w: width, h: height });
   };
 
+  const onWrapLayout = (e: LayoutChangeEvent) => {
+    const { width, height } = e.nativeEvent.layout;
+    setWrap({ w: width, h: height });
+  };
+
+  // Largest box with the video's aspect that fits inside the wrapper, computed
+  // explicitly rather than via `aspectRatio` + `maxHeight`: when Yoga clamps a
+  // dimension it does not shrink the other to compensate, so the box can end up
+  // off-aspect — which would silently break preview/render parity, the whole
+  // point of aspect-locking. Falls back to filling the wrapper until measured.
+  const canvasBox = useMemo(() => {
+    if (wrap.w <= 0 || wrap.h <= 0) return { w: wrap.w, h: wrap.h };
+    const aspect = videoSize.w / videoSize.h;
+    const w = Math.min(wrap.w, wrap.h * aspect);
+    return { w, h: w / aspect };
+  }, [wrap.w, wrap.h, videoSize.w, videoSize.h]);
+
   const onVideoLoad = (status: { durationMillis?: number } | unknown) => {
     const s = status as { durationMillis?: number };
     if (s.durationMillis) setDurationMs(s.durationMillis);
+  };
+
+  // `onReadyForDisplay` is the only source of display dimensions — expo-av's
+  // playback status does not carry them. It fires from KVO on the player
+  // layer's `readyForDisplay`, so in practice it has always landed by the time
+  // the talent can see the clip and place an overlay.
+  const measuredVideoSize = useRef(false);
+
+  const onVideoReady = (event: VideoReadyForDisplayEvent) => {
+    const { width, height } = event.naturalSize;
+    if (!width || !height) return;
+    measuredVideoSize.current = true;
+    setVideoSize({ w: toEven(width), h: toEven(height) });
   };
 
   const addText = () => {
@@ -260,6 +313,14 @@ const EditorScreen = () => {
   };
 
   const onNext = () => {
+    if (!measuredVideoSize.current) {
+      // Not fatal — the EDL falls back to portrait, which is what shipped
+      // before landscape support. Worth a log line because if it ever happens
+      // for a landscape clip the render would come out stretched.
+      console.warn(
+        `[editor] submitting before onReadyForDisplay; EDL canvas falls back to ${DEFAULT_VIDEO_W}x${DEFAULT_VIDEO_H}`
+      );
+    }
     const end = Math.max(durationMs, 1000);
     // Only device-picked layers need an upload; library layers reference an
     // existing S3 key directly in the EDL.
@@ -307,8 +368,8 @@ const EditorScreen = () => {
     }).filter((l): l is EdlTextLayer | EdlImageLayer => l !== null);
 
     const edl: EdlBase = {
-      width: CANVAS_W,
-      height: CANVAS_H,
+      width: videoSize.w,
+      height: videoSize.h,
       durationMs: end,
       layers: edlLayers,
       background: background
@@ -336,32 +397,43 @@ const EditorScreen = () => {
             </Text>
           </View>
         )}
-        <View style={styles.canvas} onLayout={onCanvasLayout}>
-          <Video
-            ref={video}
-            source={{ uri: videoUri }}
-            style={StyleSheet.absoluteFill}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay
-            isLooping
-            isMuted
-            onLoad={onVideoLoad}
-          />
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setSelectedId(null)}
-          />
-          {layers.map((l) => (
-            <LayerView
-              key={l.id}
-              layer={l}
-              canvasW={canvas.w}
-              canvasH={canvas.h}
-              selected={l.id === selectedId}
-              onSelect={() => setSelectedId(l.id)}
-              onCommit={(patch) => updateLayer(l.id, patch)}
+        {/* The canvas is aspect-locked to the video and letterboxed inside
+            `canvasWrap`, so on-screen layer positions map exactly onto the
+            EDL's fractional coordinates. Previously it was flex:1 with a
+            COVER video, which cropped the source and left a small drift
+            between preview and render even in portrait. */}
+        <View style={styles.canvasWrap} onLayout={onWrapLayout}>
+          <View
+            style={[styles.canvas, { width: canvasBox.w, height: canvasBox.h }]}
+            onLayout={onCanvasLayout}
+          >
+            <Video
+              ref={video}
+              source={{ uri: videoUri }}
+              style={StyleSheet.absoluteFill}
+              resizeMode={ResizeMode.CONTAIN}
+              shouldPlay
+              isLooping
+              isMuted
+              onLoad={onVideoLoad}
+              onReadyForDisplay={onVideoReady}
             />
-          ))}
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => setSelectedId(null)}
+            />
+            {layers.map((l) => (
+              <LayerView
+                key={l.id}
+                layer={l}
+                canvasW={canvas.w}
+                canvasH={canvas.h}
+                selected={l.id === selectedId}
+                onSelect={() => setSelectedId(l.id)}
+                onCommit={(patch) => updateLayer(l.id, patch)}
+              />
+            ))}
+          </View>
         </View>
 
         {selected && selected.type === "text" && (
@@ -777,7 +849,7 @@ const TextLayerContent = ({
     !isPlaceholder && layer.shadowColor
       ? (layer.shadowOffsetRatio ?? DEFAULT_SHADOW_OFFSET_RATIO) * fontSizePx
       : 0;
-  const maxWidth = Math.max(120, (canvasW || CANVAS_W) * 0.86);
+  const maxWidth = Math.max(120, (canvasW || DEFAULT_VIDEO_W) * 0.86);
   // Measured height of the (absolutely-positioned) caption, used to recentre it
   // on the layer's anchor point. The box is taken out of flow so its text
   // measures against its own content rather than the 0×0 anchor (which on the
@@ -890,7 +962,14 @@ const ImageLayerContent = ({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   safe: { flex: 1, backgroundColor: "#000" },
-  canvas: { flex: 1, overflow: "hidden", position: "relative" },
+  // Centres the aspect-locked canvas and letterboxes the leftover space.
+  canvasWrap: {
+    flex: 1,
+    backgroundColor: "#000",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  canvas: { overflow: "hidden", position: "relative" },
   layer: {
     position: "absolute",
     left: 0,

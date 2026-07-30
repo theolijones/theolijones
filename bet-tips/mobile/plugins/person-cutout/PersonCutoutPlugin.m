@@ -311,7 +311,17 @@ static CGImagePropertyOrientation BgOrientationFromFrame(UIImageOrientation o) {
         maskCI = [maskCI imageByApplyingTransform:ms];
       }
 
-      if (![self ensureFittedBgForWidth:w height:h orientation:frame.orientation]) {
+      // While a take is in progress the recorded file's display orientation is
+      // already fixed (AVAssetWriterInput.transform is set once, at writer
+      // setup). Follow that same orientation for the BG instead of the live
+      // frame's, so rotating the phone mid-take doesn't spin the background 90°
+      // while the person stays put. One atomic load, no allocation — this stays
+      // off the path that caused the historical jetsam.
+      int locked = [[CutoutRecorder shared] lockedOrientation];
+      UIImageOrientation bgOrientation =
+          locked >= 0 ? (UIImageOrientation)locked : frame.orientation;
+
+      if (![self ensureFittedBgForWidth:w height:h orientation:bgOrientation]) {
         return nil;
       }
 

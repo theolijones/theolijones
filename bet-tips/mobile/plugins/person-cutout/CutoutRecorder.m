@@ -44,7 +44,15 @@
   size_t _writerHeight;
   uint64_t _framesWritten;
   uint64_t _framesDropped;
+
+  // Orientation the writer was set up with, or kNoLockedOrientation when no
+  // writer is open. Written on _writerQueue, read on the frame-processor
+  // thread, so it must be atomic. See -lockedOrientation in the header.
+  atomic_int _lockedOrientation;
 }
+
+// Sentinel for "no writer open". UIImageOrientation values are all >= 0.
+static const int kNoLockedOrientation = -1;
 
 RCT_EXPORT_MODULE();
 
@@ -72,6 +80,10 @@ RCT_EXPORT_MODULE();
   self = [super init];
   if (self) {
     atomic_init(&_isRecording, false);
+    // Must be explicit: ivars zero-initialise, and 0 is UIImageOrientationUp,
+    // not "unset". Left at 0 the plugin would treat the BG as locked upright
+    // during live preview and stop following the device.
+    atomic_init(&_lockedOrientation, kNoLockedOrientation);
     _writerQueue = dispatch_queue_create("com.bettips.cutoutrecorder.writer",
                                          DISPATCH_QUEUE_SERIAL);
     _sessionStart = kCMTimeInvalid;
@@ -150,6 +162,10 @@ RCT_EXPORT_METHOD(startRecording:(NSString *)path
     self->_writer = nil;
     self->_videoInput = nil;
     self->_adaptor = nil;
+    // Cleared here as well as on stop: the writer is created lazily on the
+    // first frame, so between start and that frame there is no locked
+    // orientation and the BG should keep following the device.
+    atomic_store(&self->_lockedOrientation, kNoLockedOrientation);
     atomic_store(&self->_isRecording, true);
     NSLog(@"[CutoutRecorder] startRecording → %@", url.path);
     resolve(@{ @"path" : url.path });
@@ -164,6 +180,10 @@ RCT_EXPORT_METHOD(stopRecording:(RCTPromiseResolveBlock)resolve
   // are dropped before they touch the writer. Writer teardown then runs
   // on the writer queue.
   atomic_store(&_isRecording, false);
+  // Released alongside the hot flag rather than inside the queue block: the
+  // preview keeps running after stop, and it should resume following the
+  // device immediately instead of waiting on writer teardown.
+  atomic_store(&_lockedOrientation, kNoLockedOrientation);
 
   dispatch_async(_writerQueue, ^{
     AVAssetWriter *w = self->_writer;
@@ -435,10 +455,19 @@ RCT_EXPORT_METHOD(mergeAudio:(NSString *)videoPath
   _writerWidth = width;
   _writerHeight = height;
   _sessionStarted = NO;
+  // Publish only after the writer is fully committed, so the plugin never pins
+  // the BG to an orientation belonging to a setup that then failed.
+  atomic_store(&_lockedOrientation, (int)orientation);
   NSLog(@"[CutoutRecorder] writer ready %lux%lu orientation=%ld mirrored=%d",
         (unsigned long)width, (unsigned long)height,
         (long)orientation, (int)isMirrored);
   return YES;
+}
+
+#pragma mark - Orientation lock (read from the frame-processor thread)
+
+- (int)lockedOrientation {
+  return atomic_load(&_lockedOrientation);
 }
 
 @end
