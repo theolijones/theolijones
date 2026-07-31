@@ -4,7 +4,12 @@ import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  CopyObjectCommand,
+  GetObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import type { Readable } from "node:stream";
 import type { EdlBase, EdlImageLayer, EdlTextLayer } from "./edl";
 
@@ -14,6 +19,8 @@ const s3 = new S3Client({});
 const UPLOADS_TABLE = process.env.UPLOADS_TABLE!;
 const MEDIA_BUCKET = process.env.MEDIA_BUCKET!;
 const FFMPEG = process.env.FFMPEG_PATH ?? "/usr/bin/ffmpeg";
+// Installed alongside ffmpeg by the Dockerfile, from the same pinned build.
+const FFPROBE = process.env.FFPROBE_PATH ?? "/usr/bin/ffprobe";
 const FONT_REG = process.env.FONT_REG ?? "/usr/share/fonts/dejavu/DejaVuSans.ttf";
 const FONT_BOLD = process.env.FONT_BOLD ?? "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf";
 // Bundled TTFs copied into the image by the Dockerfile (COPY render-worker/fonts).
@@ -51,13 +58,37 @@ interface UploadRecord {
   edl?: EdlBase;
   assets?: { assetId: string; assetKey: string; contentType: string }[];
   renderStatus?: string;
+  /** Display rotation last written by the rotate op, in degrees clockwise. */
+  videoRotation?: number;
+  /** Key of the pristine copy taken before the first rotate. */
+  rotationBackupKey?: string;
 }
 
-interface Event {
+interface RenderEvent {
   uploadId: string;
+  op?: undefined;
 }
 
-export const handler = async (event: Event): Promise<void> => {
+interface RotateEvent {
+  op: "rotate";
+  uploadId: string;
+  /** Degrees clockwise to apply on top of the rotation the file already
+   *  declares. The admin sends the angle it applied in the preview, so the
+   *  caller never has to know what the file currently says. */
+  delta: number;
+}
+
+export interface RotateResult {
+  previousRotation: number;
+  rotation: number;
+  backedUp: boolean;
+}
+
+export const handler = async (
+  event: RenderEvent | RotateEvent
+): Promise<void | RotateResult> => {
+  if (event.op === "rotate") return rotateStoredVideo(event);
+
   const { uploadId } = event;
   if (!uploadId) throw new Error("uploadId required");
 
@@ -148,6 +179,146 @@ export const handler = async (event: Event): Promise<void> => {
     throw e;
   }
 };
+
+/**
+ * Rewrite the display-rotation tag on the stored upload, in place.
+ *
+ * Exists because the recorder stamps a fixed rotation onto every file
+ * regardless of how the phone was held, so landscape takes play sideways
+ * everywhere downstream. Nothing in the container distinguishes a correctly
+ * tagged portrait clip from a mis-tagged landscape one, so the correction has
+ * to be driven by a human deciding in the admin — hence a delta, not a guess.
+ *
+ * `-c copy` means the encoded bitstream is untouched: only the container's
+ * display matrix changes. Verified byte-identical video packets before and
+ * after, so this is lossless and safe to apply repeatedly (rotating back by
+ * the inverse restores the original tag exactly).
+ */
+const rotateStoredVideo = async (event: RotateEvent): Promise<RotateResult> => {
+  const { uploadId, delta } = event;
+  if (!uploadId) throw new Error("uploadId required");
+
+  const record = await loadRecord(uploadId);
+  await mkdir(WORK, { recursive: true });
+  const ext = extFromKey(record.videoKey) || ".mp4";
+  const inputPath = `${WORK}/rotate-in${ext}`;
+  const outputPath = `${WORK}/rotate-out${ext}`;
+  await downloadToFile(record.videoKey, inputPath);
+
+  const previousRotation = await probeRotation(inputPath);
+  const rotation = normalizeAngle(previousRotation + delta);
+
+  // Keep one pristine copy the first time an upload is touched. The operation
+  // is reversible on its own, but this is the only guard if the source is ever
+  // rewritten by something less careful.
+  const backupKey = `${record.videoKey}.original`;
+  const backedUp = !record.rotationBackupKey;
+  if (backedUp) {
+    await s3.send(
+      new CopyObjectCommand({
+        Bucket: MEDIA_BUCKET,
+        CopySource: `${MEDIA_BUCKET}/${record.videoKey}`,
+        Key: backupKey,
+      })
+    );
+  }
+
+  // Explicit mapping rather than ffmpeg's defaults, so an upload that gained an
+  // extra track can't silently lose audio here. `0:a?` keeps audio optional —
+  // a cutout recording spliced without a mic would otherwise fail the copy.
+  await runFfmpeg([
+    "-y",
+    "-v",
+    "error",
+    "-display_rotation",
+    String(rotation),
+    "-i",
+    inputPath,
+    "-map",
+    "0:v:0",
+    "-map",
+    "0:a?",
+    "-c",
+    "copy",
+    outputPath,
+  ]);
+
+  const written = await probeRotation(outputPath);
+  if (written !== rotation) {
+    throw new Error(
+      `rotation tag not applied: asked for ${rotation}, file reports ${written}`
+    );
+  }
+
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: MEDIA_BUCKET,
+      Key: record.videoKey,
+      Body: await readFile(outputPath),
+      ContentType: record.videoContentType ?? "video/mp4",
+    })
+  );
+
+  await ddb.send(
+    new UpdateCommand({
+      TableName: UPLOADS_TABLE,
+      Key: { uploadId },
+      UpdateExpression:
+        "SET videoRotation = :r, rotationBackupKey = :b, updatedAt = :t",
+      ExpressionAttributeValues: {
+        ":r": rotation,
+        ":b": record.rotationBackupKey ?? backupKey,
+        ":t": new Date().toISOString(),
+      },
+    })
+  );
+
+  console.log(
+    `[rotate] ${uploadId} ${previousRotation}° + ${delta}° -> ${rotation}°`
+  );
+  return { previousRotation, rotation, backedUp };
+};
+
+/** Stream-level rotation in degrees, or 0 when the file declares none.
+ *  `stream_side_data` (not `side_data`) yields one line for the stream rather
+ *  than one per frame. */
+const probeRotation = (filePath: string): Promise<number> =>
+  new Promise((resolve, reject) => {
+    const child = spawn(
+      FFPROBE,
+      [
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream_side_data=rotation",
+        "-of",
+        "default=nw=1:nk=1",
+        filePath,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] }
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
+    child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(new Error(`ffprobe exited ${code}: ${stderr.slice(-400)}`));
+        return;
+      }
+      const first = stdout.trim().split("\n")[0]?.trim();
+      const parsed = first ? Number(first) : 0;
+      resolve(Number.isFinite(parsed) ? parsed : 0);
+    });
+  });
+
+/** Fold any angle into [0, 360). ffmpeg reports negatives (-90), and
+ *  `-display_rotation` accepts either, but normalising keeps what we persist
+ *  and compare against unambiguous. */
+const normalizeAngle = (deg: number): number => ((deg % 360) + 360) % 360;
 
 const loadRecord = async (uploadId: string): Promise<UploadRecord> => {
   const res = await ddb.send(

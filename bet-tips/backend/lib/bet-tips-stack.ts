@@ -215,6 +215,26 @@ export class BetTipsStack extends cdk.Stack {
     uploadsCompleteFn.addEnvironment("RENDER_FN_NAME", renderWorkerFn.functionName);
     renderWorkerFn.grantInvoke(uploadsCompleteFn);
 
+    // Rewrites the stored video's display-rotation tag. ffmpeg only exists in
+    // the render-worker image, so this handler just invokes that synchronously;
+    // its own IAM needs nothing beyond the invoke.
+    //
+    // Not built via fn(): the 10s default would expire while waiting on the
+    // render-worker's download + stream copy + upload, especially on a
+    // container cold start. 29s is the ceiling that still fits inside API
+    // Gateway's fixed 30s integration timeout.
+    const uploadsRotateFn = new NodejsFunction(this, "UploadsRotateFn", {
+      ...lambdaDefaults,
+      entry: path.join(__dirname, "..", "lambda", "uploads-rotate.ts"),
+      handler: "handler",
+      timeout: cdk.Duration.seconds(29),
+      environment: {
+        ...commonEnv,
+        RENDER_FN_NAME: renderWorkerFn.functionName,
+      },
+    });
+    renderWorkerFn.grantInvoke(uploadsRotateFn);
+
     const uploadsReviewFn = fn("UploadsReviewFn", "uploads-review.ts");
     uploadsTable.grantReadWriteData(uploadsReviewFn);
     usersTable.grantReadData(uploadsReviewFn);
@@ -282,6 +302,7 @@ export class BetTipsStack extends cdk.Stack {
     protectedRoute("/admin/tokens/{token}", apigw.HttpMethod.PATCH, tokensUpdateFn);
     protectedRoute("/admin/uploads", apigw.HttpMethod.GET, uploadsListFn);
     protectedRoute("/admin/uploads/{uploadId}", apigw.HttpMethod.PATCH, uploadsReviewFn);
+    protectedRoute("/admin/uploads/{uploadId}/rotate", apigw.HttpMethod.POST, uploadsRotateFn);
     protectedRoute("/library/assets", apigw.HttpMethod.GET, libraryListFn);
     protectedRoute("/admin/library/assets", apigw.HttpMethod.POST, libraryCreateFn);
     protectedRoute("/admin/library/assets/{assetId}", apigw.HttpMethod.PATCH, libraryUpdateFn);
