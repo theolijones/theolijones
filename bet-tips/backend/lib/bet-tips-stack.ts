@@ -1,6 +1,10 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as path from "path";
+import * as fs from "fs";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
+import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
+import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as apigw from "aws-cdk-lib/aws-apigatewayv2";
@@ -308,8 +312,68 @@ export class BetTipsStack extends cdk.Stack {
     protectedRoute("/admin/library/assets/{assetId}", apigw.HttpMethod.PATCH, libraryUpdateFn);
     protectedRoute("/admin/library/assets/{assetId}", apigw.HttpMethod.DELETE, libraryDeleteFn);
 
+    // ---- Admin console hosting -------------------------------------------
+    //
+    // The console previously existed only as a Vite dev server on one laptop:
+    // it died with the terminal, served no TLS, and was unreachable from
+    // anywhere else. This puts the built SPA behind CloudFront so it is always
+    // up and independent of any one machine.
+    //
+    // The bucket stays private — CloudFront reaches it through Origin Access
+    // Control, so the objects are not directly fetchable from S3.
+    const adminDistPath = path.join(__dirname, "..", "..", "admin", "dist");
+    if (!fs.existsSync(path.join(adminDistPath, "index.html"))) {
+      // Fail at synth rather than silently shipping an empty bucket. The build
+      // is not run here on purpose: it needs admin/.env for VITE_API_URL, which
+      // is gitignored and local-only.
+      throw new Error(
+        `admin/dist/index.html not found. Run \`npm run build\` in bet-tips/admin before deploying.`
+      );
+    }
+
+    const adminBucket = new s3.Bucket(this, "AdminSiteBucket", {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    const adminDistribution = new cloudfront.Distribution(this, "AdminSiteDistribution", {
+      defaultBehavior: {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(adminBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        // The console is behind a login and shows review state that changes
+        // constantly; caching HTML would serve stale screens after a deploy.
+        // Vite fingerprints asset filenames, so those are safe to cache hard
+        // and are handled by the default policy on their own URLs.
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      defaultRootObject: "index.html",
+      // Single-page app: React Router owns the paths, so any key S3 doesn't
+      // have must fall back to index.html rather than CloudFront's error page.
+      // 403 as well as 404 because a private bucket returns AccessDenied for a
+      // missing key, not NoSuchKey.
+      errorResponses: [
+        { httpStatus: 403, responseHttpStatus: 200, responsePagePath: "/index.html" },
+        { httpStatus: 404, responseHttpStatus: 200, responsePagePath: "/index.html" },
+      ],
+      comment: "Bet Tips admin console",
+    });
+
+    new s3deploy.BucketDeployment(this, "AdminSiteDeployment", {
+      sources: [s3deploy.Source.asset(adminDistPath)],
+      destinationBucket: adminBucket,
+      distribution: adminDistribution,
+      // index.html is the one unfingerprinted file, so without an invalidation
+      // CloudFront keeps serving the previous build's asset references.
+      distributionPaths: ["/index.html"],
+    });
+
     new cdk.CfnOutput(this, "ApiUrl", { value: api.apiEndpoint });
     new cdk.CfnOutput(this, "MediaBucketName", { value: mediaBucket.bucketName });
     new cdk.CfnOutput(this, "JwtSecretArn", { value: jwtSecret.secretArn });
+    new cdk.CfnOutput(this, "AdminUrl", {
+      value: `https://${adminDistribution.distributionDomainName}`,
+    });
   }
 }
